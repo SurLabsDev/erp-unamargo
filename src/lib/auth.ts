@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { z } from "zod";
+import "@/lib/zod-locale";
 import { authConfig } from "@/lib/auth.config";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema";

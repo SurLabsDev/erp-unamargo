@@ -1,33 +1,37 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { PageHeader } from "@/components/page-header";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
+  CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { PageHeader } from "@/components/page-header";
 import { requireUser } from "@/lib/auth-helpers";
+import { MOVEMENT_TYPE_LABELS } from "@/lib/domain/stock";
+import { formatDateTime, formatInteger } from "@/lib/format";
+import { getSettings } from "@/lib/settings";
+import {
+  listLowStockProducts,
+  listRecentMovements,
+} from "./stock/queries";
 
 export const metadata: Metadata = { title: "Panel" };
 
-const MODULES = [
-  {
-    href: "/stock",
-    title: "Stock",
-    description:
-      "Catálogo, entradas, salidas y ajustes con historial auditable.",
-  },
-  {
-    href: "/dinero",
-    title: "Dinero",
-    description:
-      "Ingresos y egresos compartidos, balance por período y export CSV.",
-  },
-] as const;
+function formatDelta(delta: number): string {
+  return delta > 0 ? `+${formatInteger(delta)}` : formatInteger(delta);
+}
 
 export default async function PanelPage() {
   const user = await requireUser();
+  const [settings, lowStock, recentMovements] = await Promise.all([
+    getSettings(),
+    listLowStockProducts(),
+    listRecentMovements(5),
+  ]);
 
   return (
     <div>
@@ -35,22 +39,108 @@ export default async function PanelPage() {
         title={`Hola, ${user.name.split(" ")[0]}`}
         description="Resumen general de la operación."
       />
-      <div className="grid gap-4 sm:grid-cols-2">
-        {MODULES.map((mod) => (
-          <Link key={mod.href} href={mod.href} className="group">
-            <Card className="h-full transition-colors group-hover:border-foreground/30">
-              <CardHeader>
-                <CardTitle className="text-base">{mod.title}</CardTitle>
-                <CardDescription>{mod.description}</CardDescription>
-              </CardHeader>
-            </Card>
-          </Link>
-        ))}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              Stock bajo
+              {lowStock.length > 0 ? (
+                <Badge variant="destructive">{lowStock.length}</Badge>
+              ) : null}
+            </CardTitle>
+            <CardDescription>
+              Productos activos en o por debajo de su mínimo.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {lowStock.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No hay productos por debajo del mínimo.
+              </p>
+            ) : (
+              <ul className="grid gap-2">
+                {lowStock.map((product) => (
+                  <li key={product.id}>
+                    <Link
+                      href={`/stock/${product.id}`}
+                      className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm hover:border-foreground/30"
+                    >
+                      <span className="min-w-0">
+                        <span className="font-mono text-xs">{product.sku}</span>{" "}
+                        <span className="text-muted-foreground">
+                          {product.name}
+                        </span>
+                      </span>
+                      <span className="shrink-0 tabular-nums">
+                        {formatInteger(product.currentStock)}{" "}
+                        <span className="text-muted-foreground">
+                          / mín {formatInteger(product.minStock)}
+                        </span>
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Últimos movimientos</CardTitle>
+            <CardDescription>
+              Actividad reciente del depósito.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {recentMovements.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Todavía no hay movimientos.{" "}
+                <Link href="/stock" className="underline underline-offset-4">
+                  Registrá el primero.
+                </Link>
+              </p>
+            ) : (
+              <ul className="grid gap-2">
+                {recentMovements.map((movement) => (
+                  <li
+                    key={movement.id}
+                    className="flex items-center justify-between gap-3 text-sm"
+                  >
+                    <span className="min-w-0 truncate">
+                      <span className="font-mono text-xs">
+                        {movement.productSku}
+                      </span>{" "}
+                      <span className="text-muted-foreground">
+                        {MOVEMENT_TYPE_LABELS[movement.type]}
+                      </span>
+                    </span>
+                    <span className="shrink-0 tabular-nums">
+                      {formatDelta(movement.delta)}
+                    </span>
+                    <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                      {formatDateTime(movement.createdAt, settings.timezone)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <Button asChild variant="link" size="sm" className="mt-2 px-0">
+              <Link href="/stock/movimientos">Ver historial completo</Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-base">Dinero</CardTitle>
+            <CardDescription>
+              El balance operativo compartido (saldo del período, ingresos y
+              egresos) se construye en el Hito 2.
+            </CardDescription>
+          </CardHeader>
+        </Card>
       </div>
-      <p className="mt-6 text-xs text-muted-foreground">
-        El resumen del panel (stock bajo, saldo del mes, últimos movimientos)
-        se completa junto con los módulos de stock y dinero.
-      </p>
     </div>
   );
 }

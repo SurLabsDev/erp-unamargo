@@ -49,5 +49,6 @@ Next.js 16 (App Router, TS estricto, `src/`) · Postgres (Supabase/Neon free tie
 
 ## Estado
 
-- **H0 (actual)**: cimientos — scaffold, esquema completo, auth, shell, seeds, docs.
-- H1: stock · H2: dinero + usuarios/config = **versión funcional desplegada** · H3: alertas email + import CSV + API pública · H4: publicación (tests, README deploy, hardening).
+- H0 ✔ cimientos — scaffold, esquema completo, auth, shell, seeds, docs.
+- H1 ✔ stock — catálogo (límite 150, SKU inmutable con movimientos), movimientos atómicos (entrada/salida/ajuste por stock contado), historial 50/pág con filtros, panel con quiebres, review adversarial aplicado.
+- **H2 (siguiente)**: dinero + usuarios/config = **versión funcional desplegada** · H3: alertas email + import CSV + API pública · H4: publicación (tests, README deploy, hardening).
