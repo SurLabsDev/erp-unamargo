@@ -11,6 +11,8 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
  */
 export function isValidISODate(value: string): boolean {
   if (!ISO_DATE.test(value)) return false;
+  // JS accepts year 0000 but Postgres has no year zero: reject it here.
+  if (value < "0001-01-01") return false;
   const parsed = new Date(`${value}T00:00:00Z`);
   return (
     !Number.isNaN(parsed.getTime()) &&

@@ -5,6 +5,9 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { ForbiddenError, requireRole } from "@/lib/auth-helpers";
 import { db } from "@/lib/db/client";
+// Serializes operations that check the 150-active-SKU limit (create,
+// reactivate, import): a plain COUNT has a race between two admins.
+import { PRODUCT_LIMIT_LOCK } from "@/lib/db/locks";
 import { products, stockMovements } from "@/lib/db/schema";
 import {
   MAX_ACTIVE_PRODUCTS,
@@ -17,10 +20,6 @@ import {
 export type ActionResult =
   | { ok: true; message: string }
   | { ok: false; error: string };
-
-// Serializes operations that check the 150-active-SKU limit (create,
-// reactivate, import): a plain COUNT has a race between two admins.
-const PRODUCT_LIMIT_LOCK = 834001;
 
 const LIMIT_ERROR = `Límite alcanzado: la instancia admite hasta ${MAX_ACTIVE_PRODUCTS} SKU activos. Desactivá un producto para liberar lugar.`;
 

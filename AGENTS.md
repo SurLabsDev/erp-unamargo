@@ -51,4 +51,5 @@ Next.js 16 (App Router, TS estricto, `src/`) · Postgres (Supabase/Neon free tie
 
 - H0 ✔ cimientos — scaffold, esquema completo, auth, shell, seeds, docs.
 - H1 ✔ stock — catálogo (límite 150, SKU inmutable con movimientos), movimientos atómicos (entrada/salida/ajuste por stock contado), historial 50/pág con filtros, panel con quiebres, review adversarial aplicado.
-- **H2 (siguiente)**: dinero + usuarios/config = **versión funcional desplegada** · H3: alertas email + import CSV + API pública · H4: publicación (tests, README deploy, hardening).
+- H2 ✔ dinero + usuarios/config — balance por período (5 números, aritmética en centavos), anulación soft, export CSV es-UY con mitigación de formula injection, categorías, usuarios (tope 5, último admin protegido bajo lock), configuración de saldo/destinatarios, review adversarial aplicado. **Versión funcional completa en local; el deploy a Vercel espera credenciales.**
+- **H3 (siguiente)**: alertas email + import CSV + API pública · H4: publicación (tests, README deploy, hardening).

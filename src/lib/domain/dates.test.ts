@@ -12,6 +12,8 @@ describe("isValidISODate", () => {
     expect(isValidISODate("2026-02-30")).toBe(false); // passes regex, invalid
     expect(isValidISODate("2026-13-45")).toBe(false);
     expect(isValidISODate("12/08/2026")).toBe(false);
+    // JS accepts year 0000 but Postgres has no year zero
+    expect(isValidISODate("0000-01-01")).toBe(false);
   });
 });
 

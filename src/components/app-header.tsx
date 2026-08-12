@@ -1,9 +1,10 @@
 "use client";
 
-import { LogOut, Menu, UserRound } from "lucide-react";
+import { KeyRound, LogOut, Menu, UserRound } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { ChangePasswordDialog } from "@/components/change-password-dialog";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -45,6 +46,7 @@ export function AppHeader(props: {
   const { companyName, userName, role, onLogout } = props;
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
   const items = NAV_ITEMS.filter((item) => !item.adminOnly || role === "admin");
 
   return (
@@ -134,6 +136,13 @@ export function AppHeader(props: {
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem
+                onSelect={() => setPasswordOpen(true)}
+                className="cursor-pointer"
+              >
+                <KeyRound className="size-4" />
+                Cambiar contraseña
+              </DropdownMenuItem>
+              <DropdownMenuItem
                 onSelect={() => void onLogout()}
                 className="cursor-pointer"
               >
@@ -144,6 +153,7 @@ export function AppHeader(props: {
           </DropdownMenu>
         </div>
       </div>
+      <ChangePasswordDialog open={passwordOpen} onOpenChange={setPasswordOpen} />
     </header>
   );
 }

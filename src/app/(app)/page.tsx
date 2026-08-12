@@ -11,9 +11,17 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { requireUser } from "@/lib/auth-helpers";
+import { computePeriodSummary, resolvePeriod } from "@/lib/domain/money";
 import { MOVEMENT_TYPE_LABELS } from "@/lib/domain/stock";
-import { formatDateTime, formatInteger } from "@/lib/format";
+import {
+  formatDate,
+  formatDateTime,
+  formatInteger,
+  formatMoney,
+  todayInTimeZone,
+} from "@/lib/format";
 import { getSettings } from "@/lib/settings";
+import { periodTotals } from "./dinero/queries";
 import {
   listLowStockProducts,
   listRecentMovements,
@@ -27,11 +35,14 @@ function formatDelta(delta: number): string {
 
 export default async function PanelPage() {
   const user = await requireUser();
-  const [settings, lowStock, recentMovements] = await Promise.all([
-    getSettings(),
+  const settings = await getSettings();
+  const period = resolvePeriod({}, todayInTimeZone(settings.timezone));
+  const [lowStock, recentMovements, totals] = await Promise.all([
     listLowStockProducts(),
     listRecentMovements(5),
+    periodTotals(period),
   ]);
+  const summary = computePeriodSummary(settings.initialBalance, totals);
 
   return (
     <div>
@@ -133,12 +144,45 @@ export default async function PanelPage() {
 
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle className="text-base">Dinero</CardTitle>
+            <CardTitle className="text-base">Dinero — mes actual</CardTitle>
             <CardDescription>
-              El balance operativo compartido (saldo del período, ingresos y
-              egresos) se construye en el Hito 2.
+              {formatDate(period.fromISO)} a {formatDate(period.toISO)} ·
+              Control interno. No reemplaza la contabilidad formal.
             </CardDescription>
           </CardHeader>
+          <CardContent>
+            <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <div>
+                <dt className="text-xs text-muted-foreground">Ingresos</dt>
+                <dd className="text-lg font-medium tabular-nums">
+                  +{formatMoney(summary.income, settings.currencyCode)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">Egresos</dt>
+                <dd className="text-lg font-medium tabular-nums">
+                  −{formatMoney(summary.expense, settings.currencyCode)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">Resultado</dt>
+                <dd className="text-lg font-medium tabular-nums">
+                  {formatMoney(summary.result, settings.currencyCode)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">
+                  Saldo al cierre
+                </dt>
+                <dd className="text-lg font-semibold tabular-nums">
+                  {formatMoney(summary.closingBalance, settings.currencyCode)}
+                </dd>
+              </div>
+            </dl>
+            <Button asChild variant="link" size="sm" className="mt-2 px-0">
+              <Link href="/dinero">Ver balance completo</Link>
+            </Button>
+          </CardContent>
         </Card>
       </div>
     </div>
