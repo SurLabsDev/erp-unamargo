@@ -1,36 +1,54 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# surlabs-erp
 
-## Getting Started
+Sistema de gestión operativo para pymes, por **Surlabs**: control de stock de un depósito, balance operativo compartido, alertas de stock bajo por email, importación inicial por CSV y una API pública de solo lectura con el stock.
 
-First, run the development server:
+Se construye como **base reutilizable**: una instancia (deploy + base Postgres propia) por cliente, parametrizada por `config/instance.json` + seed. Sin multi-tenancy. Primera instancia: Unamargo (Uruguay).
+
+> Estado: **Hito 0 — cimientos**. Módulos de stock (H1), dinero (H2), alertas/import/API pública (H3) y guía de deploy completa (H4) en construcción.
+
+## Desarrollo local
+
+Requisitos: Node 20+, Docker.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# 1. Postgres local (puerto 5433 para no chocar con otros proyectos)
+docker run -d --name surlabs-erp-postgres -p 5433:5432 \
+  -e POSTGRES_USER=surlabs -e POSTGRES_PASSWORD=surlabs -e POSTGRES_DB=surlabs_erp \
+  postgres:18-alpine
+
+# 2. Instalar, migrar y seedear la demo
+npm install
+cp .env.example .env        # el default ya apunta al Docker de arriba
+npm run db:migrate
+npm run db:seed -- --demo
+
+# 3. Levantar
+npm run dev                 # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Credenciales demo (impresas también por el seed):
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Rol | Email | Password |
+|---|---|---|
+| Administración | `admin@unamargo.demo` | `unamargo-admin` |
+| Operación | `operador@unamargo.demo` | `unamargo-operador` |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Scripts
 
-## Learn More
+| Comando | Qué hace |
+|---|---|
+| `npm run verify` | `typecheck && lint && test && build` — compuerta de cada commit |
+| `npm run db:generate` | Genera migraciones SQL desde `src/lib/db/schema.ts` |
+| `npm run db:migrate` | Aplica migraciones |
+| `npm run db:seed` | Seed de instancia desde `config/instance.json` (fallback: example) |
+| `npm run db:seed -- --demo [--reset]` | Seed demo Unamargo (`--reset` borra todo antes) |
+| `npm run db:check` | Verifica invariante de stock (cache == Σ ledger) |
+| `npm run user:create -- --email … --name … --role …` | Alta de usuario por CLI (máx. 5 activos) |
 
-To learn more about Next.js, take a look at the following resources:
+## Variables de entorno
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Ver [.env.example](.env.example). Regla clave: en producción `DATABASE_URL` debe ser la **connection string con pooler** (Supabase pgbouncer :6543 / host `-pooler` de Neon) porque el runtime es serverless.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Deploy de una nueva instancia
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+La guía completa paso a paso (crear DB free tier, Vercel, Resend con dominio verificado, seed real sin datos demo, rotación de credenciales, checklist post-deploy, riesgos del free tier y backups) se escribe en el **Hito 4**. Esqueleto del proceso: crear base → `DATABASE_URL` con pooler → `npm run db:migrate` → editar `config/instance.json` → `npm run db:seed` → proyecto nuevo en Vercel → smoke.

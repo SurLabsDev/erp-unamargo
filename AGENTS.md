@@ -7,3 +7,47 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+# surlabs-erp
+
+ERP web liviano para pymes, producto de **Surlabs**. Base reutilizable: **una instancia (deploy Vercel + base Postgres) por cliente**, parametrizada por `config/instance.json` + seed. Primera instancia: Unamargo (mates, Uruguay). La especificación completa y contractual vive en `PROMPT_ERP.md` de la carpeta de la propuesta; ante duda de alcance, ese documento manda.
+
+## Stack
+
+Next.js 16 (App Router, TS estricto, `src/`) · Postgres (Supabase/Neon free tier; local: Docker en :5433) · Drizzle ORM + drizzle-kit · Auth.js v5 Credentials (JWT, bcryptjs) · Zod 4 · Tailwind 4 + shadcn/ui (preset Nova: Geist/Lucide, tema neutral monocromo) · TanStack Table v9 + TanStack Query v5 · Resend (fallback consola) · Vitest.
+
+## Comandos
+
+- `npm run dev` / `npm run build` / `npm run start`
+- `npm run verify` = typecheck && lint && test && build — **compuerta obligatoria antes de cada commit**
+- `npm run db:generate` (migraciones desde el schema) / `npm run db:migrate`
+- `npm run db:seed` (instancia desde `config/instance.json`) / `npm run db:seed -- --demo [--reset]`
+- `npm run db:check` (invariante stock: cache == Σ delta del ledger)
+- `npm run user:create -- --email x --name "N" --role admin|operator`
+
+## Mapa
+
+- `src/app/(public)/login` — login. `src/app/(app)/…` — shell autenticado (panel, stock, dinero, importar, configuracion).
+- `src/app/api/public/v1/stock` — única API pública (solo lectura). `src/app/api/auth/[...nextauth]` — Auth.js.
+- `src/lib/db/{schema,client}.ts` — esquema (DDL de referencia en PROMPT_ERP.md §4) y cliente.
+- `src/lib/domain/` — **reglas de negocio como funciones puras, testeables sin DB** (deltas, alertas, saldos, CSV). Las server actions solo orquestan transacción + dominio + revalidación.
+- `src/lib/{auth,auth-helpers,settings,format,email}.ts` — infraestructura compartida.
+- `scripts/` — seed, create-user, check-integrity. `drizzle/` — migraciones SQL. `config/` — parametrización por instancia.
+- `src/proxy.ts` — protección de rutas (convención Next 16; reemplaza middleware.ts).
+
+## Reglas de oro
+
+1. **Ledger inmutable**: `stock_movements` es append-only; jamás UPDATE/DELETE. Correcciones = ajuste con nota. Dinero: jamás editar/borrar; solo soft-void por admin.
+2. **El stock nunca queda negativo**; `current_stock` se actualiza en la MISMA transacción con `UPDATE … SET current_stock = current_stock + delta … RETURNING` (nunca read-then-write).
+3. **Rol y datos se validan en el servidor** en cada action/route; la UI solo oculta botones. 403 con mensaje en español.
+4. **Fechas en la timezone de la instancia** (`settings.timezone`), nunca UTC del servidor: "hoy", "no futura" y bordes de período.
+5. **UI en español (es-UY); código, esquema y commits en inglés.** Moneda/formatos desde settings, nunca hardcodeados.
+6. Sin dependencias nuevas sin justificación en `DECISIONS.md`. Prohibido: charts, state managers extra, i18n framework, colas, Redis, websockets, cron jobs.
+7. `npm run verify` verde antes de cada commit. Conventional Commits en inglés.
+8. Fuera de alcance = no se construye: anotar la idea en `BACKLOG.md` y seguir. Si dudás si algo está en alcance, está fuera.
+9. Nada específico de un cliente hardcodeado: "Unamargo" solo puede aparecer en `config/instance.json` (no versionado) y en el seed demo.
+
+## Estado
+
+- **H0 (actual)**: cimientos — scaffold, esquema completo, auth, shell, seeds, docs.
+- H1: stock · H2: dinero + usuarios/config = **versión funcional desplegada** · H3: alertas email + import CSV + API pública · H4: publicación (tests, README deploy, hardening).

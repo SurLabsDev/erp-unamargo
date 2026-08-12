@@ -1,0 +1,21 @@
+{
+  "$comment": "Copiar a config/instance.json y editar por cliente. El seed lo consume: npm run db:seed. Cero forks: el nombre del cliente solo vive acá y en el seed demo.",
+  "companyName": "Mi Empresa",
+  "currencyCode": "UYU",
+  "timezone": "America/Montevideo",
+  "alertRecipients": [],
+  "initialBalance": "0.00",
+  "initialBalanceDate": "2026-01-01",
+  "categories": [
+    { "name": "Ventas", "kind": "income" },
+    { "name": "Otros ingresos", "kind": "income" },
+    { "name": "Mercadería", "kind": "expense" },
+    { "name": "Envíos", "kind": "expense" },
+    { "name": "Gastos operativos", "kind": "expense" },
+    { "name": "Otros egresos", "kind": "expense" }
+  ],
+  "admin": {
+    "email": "admin@miempresa.uy",
+    "name": "Nombre Apellido"
+  }
+}
