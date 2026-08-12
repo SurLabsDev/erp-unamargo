@@ -3,6 +3,7 @@
 import { and, count, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { deliverAlerts, evaluateProductAlert, type PendingAlert } from "@/lib/alerts";
 import { ForbiddenError, requireRole } from "@/lib/auth-helpers";
 import { db } from "@/lib/db/client";
 // Serializes operations that check the 150-active-SKU limit (create,
@@ -54,6 +55,7 @@ export async function createProductAction(
     if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
     const { sku, name, minStock, initialStock } = parsed.data;
 
+    let pendingAlert: PendingAlert | null = null;
     const result = await db.transaction(async (tx): Promise<ActionResult> => {
       await tx.execute(sql`select pg_advisory_xact_lock(${PRODUCT_LIMIT_LOCK})`);
 
@@ -91,10 +93,16 @@ export async function createProductAction(
           createdBy: user.id,
         });
       }
+      // A product can be born in breach (initialStock <= minStock): §8.1
+      // requires evaluation here too, like the CSV import does.
+      pendingAlert = await evaluateProductAlert(tx, product.id);
       return { ok: true, message: `Producto ${sku} creado.` };
     });
 
-    if (result.ok) revalidateStock();
+    if (result.ok) {
+      await deliverAlerts(pendingAlert ? [pendingAlert] : []);
+      revalidateStock();
+    }
     return result;
   } catch (error) {
     return handleError(error);
@@ -116,6 +124,7 @@ export async function updateProductAction(
     if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
     const { sku, name, minStock } = parsed.data;
 
+    let pendingAlert: PendingAlert | null = null;
     const result = await db.transaction(async (tx): Promise<ActionResult> => {
       const [product] = await tx
         .select()
@@ -149,15 +158,19 @@ export async function updateProductAction(
         nextSku = sku;
       }
 
-      // H3: a min_stock change must re-evaluate the alert state machine here.
       await tx
         .update(products)
         .set({ sku: nextSku, name, minStock, updatedAt: new Date() })
         .where(eq(products.id, productId));
+      // A min_stock change can trigger or rearm the alert (§8).
+      pendingAlert = await evaluateProductAlert(tx, productId);
       return { ok: true, message: "Producto actualizado." };
     });
 
-    if (result.ok) revalidateStock(productId);
+    if (result.ok) {
+      await deliverAlerts(pendingAlert ? [pendingAlert] : []);
+      revalidateStock(productId);
+    }
     return result;
   } catch (error) {
     return handleError(error);
@@ -171,6 +184,7 @@ export async function setProductActiveAction(
   try {
     await requireRole("admin");
 
+    let pendingAlert: PendingAlert | null = null;
     const result = await db.transaction(async (tx): Promise<ActionResult> => {
       if (active) {
         await tx.execute(sql`select pg_advisory_xact_lock(${PRODUCT_LIMIT_LOCK})`);
@@ -188,7 +202,11 @@ export async function setProductActiveAction(
         .returning({ sku: products.sku });
       if (!product) return { ok: false, error: "El producto no existe." };
 
-      // H3: reactivation must re-evaluate the alert state machine here.
+      // Reactivation re-evaluates the alert (§8); a product already triggered
+      // before deactivation keeps its state and does not email again.
+      if (active) {
+        pendingAlert = await evaluateProductAlert(tx, productId);
+      }
       return {
         ok: true,
         message: active
@@ -197,7 +215,10 @@ export async function setProductActiveAction(
       };
     });
 
-    if (result.ok) revalidateStock(productId);
+    if (result.ok) {
+      await deliverAlerts(pendingAlert ? [pendingAlert] : []);
+      revalidateStock(productId);
+    }
     return result;
   } catch (error) {
     return handleError(error);
@@ -220,6 +241,7 @@ export async function registerMovementAction(
     if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
     const input = parsed.data;
 
+    let pendingAlert: PendingAlert | null = null;
     const result = await db.transaction(async (tx): Promise<ActionResult> => {
       if (input.type === "entrada" || input.type === "salida") {
         const delta = input.type === "entrada" ? input.quantity : -input.quantity;
@@ -262,7 +284,7 @@ export async function registerMovementAction(
           note: input.note ?? null,
           createdBy: user.id,
         });
-        // H3: evaluate the low-stock alert state machine here (same tx).
+        pendingAlert = await evaluateProductAlert(tx, input.productId);
         return { ok: true, message: "Movimiento registrado." };
       }
 
@@ -305,11 +327,14 @@ export async function registerMovementAction(
         note: input.note,
         createdBy: user.id,
       });
-      // H3: evaluate the low-stock alert state machine here (same tx).
+      pendingAlert = await evaluateProductAlert(tx, input.productId);
       return { ok: true, message: "Ajuste registrado." };
     });
 
-    if (result.ok) revalidateStock(input.productId);
+    if (result.ok) {
+      await deliverAlerts(pendingAlert ? [pendingAlert] : []);
+      revalidateStock(input.productId);
+    }
     return result;
   } catch (error) {
     return handleError(error);

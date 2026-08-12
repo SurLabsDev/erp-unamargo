@@ -177,7 +177,10 @@ export const cashMovements = pgTable(
   ],
 );
 
-// Audit log for "one email per stockout event".
+// Audit log for "one email per stockout event". Outbox pattern: the row is
+// inserted as 'pending' in the SAME transaction as the alert claim, and the
+// post-commit delivery updates it to sent/failed/skipped — a crash between
+// commit and delivery leaves auditable evidence instead of silence.
 export const alertEvents = pgTable(
   "alert_events",
   {
@@ -190,7 +193,9 @@ export const alertEvents = pgTable(
     stockAtTrigger: integer("stock_at_trigger").notNull(),
     minStockAtTrigger: integer("min_stock_at_trigger").notNull(),
     recipients: text("recipients").array().notNull(),
-    status: text("status").$type<"sent" | "failed" | "skipped">().notNull(),
+    status: text("status")
+      .$type<"pending" | "sent" | "failed" | "skipped">()
+      .notNull(),
     error: text("error"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -199,7 +204,7 @@ export const alertEvents = pgTable(
   (t) => [
     check(
       "alert_events_status_check",
-      sql`${t.status} in ('sent','failed','skipped')`,
+      sql`${t.status} in ('pending','sent','failed','skipped')`,
     ),
   ],
 );

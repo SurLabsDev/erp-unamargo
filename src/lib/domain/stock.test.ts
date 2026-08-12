@@ -100,6 +100,23 @@ describe("movementInputSchema", () => {
     }
   });
 
+  it("caps quantities at 1.000.000 (int4 protection)", () => {
+    expect(
+      movementInputSchema.safeParse({
+        type: "entrada",
+        productId: PRODUCT_ID,
+        quantity: 3_000_000_000,
+      }).success,
+    ).toBe(false);
+    expect(
+      movementInputSchema.safeParse({
+        type: "entrada",
+        productId: PRODUCT_ID,
+        quantity: 1_000_000,
+      }).success,
+    ).toBe(true);
+  });
+
   it("requires a note for ajuste and allows counted stock 0", () => {
     expect(
       movementInputSchema.safeParse({

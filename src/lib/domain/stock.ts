@@ -23,6 +23,10 @@ const nameSchema = z
   .min(1, { error: "El nombre es obligatorio." })
   .max(120, { error: "El nombre admite hasta 120 caracteres." });
 
+/** Business cap for quantities: also protects the int4 columns (int overflow
+ * would otherwise blow up the whole transaction instead of one field). */
+export const MAX_QUANTITY = 1_000_000;
+
 // z.coerce alone turns "" and null into 0: an absent field would silently
 // become a valid value (e.g. an adjustment "counted" to 0). The preprocess
 // collapses empty/null to undefined so missing input FAILS validation.
@@ -32,7 +36,8 @@ const requiredInt = (label: string, min: number, minError: string) =>
     z.coerce
       .number({ error: `${label} es obligatorio.` })
       .int({ error: `${label} debe ser un número entero.` })
-      .min(min, { error: minError }),
+      .min(min, { error: minError })
+      .max(MAX_QUANTITY, { error: `${label} admite hasta 1.000.000.` }),
   );
 
 const nonNegativeInt = (label: string) =>

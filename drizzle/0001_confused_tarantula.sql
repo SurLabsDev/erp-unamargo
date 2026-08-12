@@ -1,0 +1,2 @@
+ALTER TABLE "alert_events" DROP CONSTRAINT "alert_events_status_check";--> statement-breakpoint
+ALTER TABLE "alert_events" ADD CONSTRAINT "alert_events_status_check" CHECK ("alert_events"."status" in ('pending','sent','failed','skipped'));

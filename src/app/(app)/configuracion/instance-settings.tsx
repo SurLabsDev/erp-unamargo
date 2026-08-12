@@ -132,11 +132,13 @@ export function InstanceSettings(props: {
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
-          {!emailConfigured ? (
+          {!emailConfigured || alertRecipients.length === 0 ? (
             <p className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
-              Las alertas por correo no están operativas: falta configurar el
-              envío (RESEND_API_KEY / EMAIL_FROM). El indicador de stock bajo
-              del panel funciona igual.
+              Las alertas por correo no están operativas:{" "}
+              {!emailConfigured
+                ? "falta configurar el envío (RESEND_API_KEY / EMAIL_FROM)."
+                : "no hay destinatarios cargados."}{" "}
+              El indicador de stock bajo del panel funciona igual.
             </p>
           ) : null}
           <form onSubmit={handleRecipients} className="grid gap-3">
