@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -33,21 +34,29 @@ export function CashTable(props: {
   currencyCode: string;
   isAdmin: boolean;
   hasFilters: boolean;
+  clearFiltersHref: string;
 }) {
-  const { rows, currencyCode, isAdmin, hasFilters } = props;
+  const { rows, currencyCode, isAdmin, hasFilters, clearFiltersHref } = props;
   const [voidTarget, setVoidTarget] = useState<CashRow | null>(null);
 
   if (rows.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed px-6 py-16 text-center">
-        <p className="text-sm font-medium">
-          {hasFilters
-            ? "Sin resultados para estos filtros."
-            : "Sin movimientos en este período."}
-        </p>
-        <p className="text-xs text-muted-foreground">
-          Registrá el primero con “Nuevo movimiento”.
-        </p>
+      <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed px-6 py-16 text-center">
+        {hasFilters ? (
+          <>
+            <p className="text-sm font-medium">Sin resultados para estos filtros.</p>
+            <Button asChild size="sm" variant="outline">
+              <Link href={clearFiltersHref}>Limpiar filtros</Link>
+            </Button>
+          </>
+        ) : (
+          <>
+            <p className="text-sm font-medium">Sin movimientos en este período.</p>
+            <p className="text-xs text-muted-foreground">
+              Registrá el primero con “Nuevo movimiento”.
+            </p>
+          </>
+        )}
       </div>
     );
   }

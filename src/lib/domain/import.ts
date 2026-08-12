@@ -182,3 +182,43 @@ export function parseProductsCsv(text: string): ParseResult {
 
   return { ok: true, rows, rejected };
 }
+
+// --- Import planning (pure, shared by preview and execute) ------------------
+
+export const IMPORT_EXISTS_REASON =
+  "Ya existe un producto con este SKU (la importación solo crea, nunca actualiza).";
+
+export function importLimitReason(maxActive: number): string {
+  return `Supera el límite de ${maxActive} SKU activos.`;
+}
+
+/**
+ * Decides, in file order, which parsed rows can be created given the SKUs
+ * that already exist and the remaining active-SKU capacity (§9). Pure: the
+ * DB reads and the lock live in the caller.
+ */
+export function planImportRows(
+  rows: ParsedImportRow[],
+  existingSkus: ReadonlySet<string>,
+  capacity: number,
+  maxActive: number,
+): { creatable: ParsedImportRow[]; rejected: RejectedImportRow[] } {
+  const creatable: ParsedImportRow[] = [];
+  const rejected: RejectedImportRow[] = [];
+  let remaining = capacity;
+  for (const row of rows) {
+    if (existingSkus.has(row.sku)) {
+      rejected.push({ line: row.line, sku: row.sku, reason: IMPORT_EXISTS_REASON });
+    } else if (remaining <= 0) {
+      rejected.push({
+        line: row.line,
+        sku: row.sku,
+        reason: importLimitReason(maxActive),
+      });
+    } else {
+      creatable.push(row);
+      remaining--;
+    }
+  }
+  return { creatable, rejected };
+}

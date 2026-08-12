@@ -11,6 +11,11 @@ import { db, type Tx } from "@/lib/db/client";
 import { BALANCE_LOCK, USER_LIMIT_LOCK } from "@/lib/db/locks";
 import { cashCategories, cashMovements, settings, users } from "@/lib/db/schema";
 import { isValidISODate } from "@/lib/domain/dates";
+import {
+  USER_LIMIT_ERROR,
+  alertRecipientsSchema,
+  canActivateUser,
+} from "@/lib/domain/limits";
 import { categoryNameSchema, passwordSchema } from "@/lib/domain/money";
 import { todayInTimeZone } from "@/lib/format";
 import { getSettings } from "@/lib/settings";
@@ -18,8 +23,6 @@ import { getSettings } from "@/lib/settings";
 export type ActionResult =
   | { ok: true; message: string; password?: string }
   | { ok: false; error: string };
-
-const MAX_ACTIVE_USERS = 5;
 
 function firstIssue(error: z.ZodError): string {
   return error.issues[0]?.message ?? "Datos inválidos.";
@@ -119,10 +122,6 @@ export async function updateBalanceSettingsAction(
   }
 }
 
-const recipientsSchema = z
-  .array(z.email({ error: "Alguno de los emails no es válido." }))
-  .max(3, { error: "Se admiten hasta 3 destinatarios." });
-
 export async function updateAlertRecipientsAction(
   formData: FormData,
 ): Promise<ActionResult> {
@@ -135,7 +134,7 @@ export async function updateAlertRecipientsAction(
     ]
       .map((value) => (typeof value === "string" ? value.trim().toLowerCase() : ""))
       .filter((value) => value !== "");
-    const parsed = recipientsSchema.safeParse(raw);
+    const parsed = alertRecipientsSchema.safeParse(raw);
     if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
 
     await db
@@ -297,11 +296,8 @@ export async function createUserAction(
         .select({ active: count() })
         .from(users)
         .where(eq(users.isActive, true));
-      if (active >= MAX_ACTIVE_USERS) {
-        return {
-          ok: false,
-          error: `Límite alcanzado: la instancia admite hasta ${MAX_ACTIVE_USERS} usuarios activos.`,
-        };
+      if (!canActivateUser(active)) {
+        return { ok: false, error: USER_LIMIT_ERROR };
       }
       const [existing] = await tx
         .select({ id: users.id })
@@ -375,11 +371,8 @@ export async function setUserActiveAction(
           .select({ activeCount: count() })
           .from(users)
           .where(eq(users.isActive, true));
-        if (!target.isActive && activeCount >= MAX_ACTIVE_USERS) {
-          return {
-            ok: false,
-            error: `Límite alcanzado: la instancia admite hasta ${MAX_ACTIVE_USERS} usuarios activos.`,
-          };
+        if (!target.isActive && !canActivateUser(activeCount)) {
+          return { ok: false, error: USER_LIMIT_ERROR };
         }
       } else if (target.role === "admin") {
         const otherAdmins = await countOtherActiveAdmins(tx, userId);

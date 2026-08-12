@@ -3,12 +3,13 @@ import { evaluateProductAlert, type PendingAlert } from "@/lib/alerts";
 import { db } from "@/lib/db/client";
 import { PRODUCT_LIMIT_LOCK } from "@/lib/db/locks";
 import { products, stockMovements } from "@/lib/db/schema";
-import type { ParsedImportRow, RejectedImportRow } from "@/lib/domain/import";
+import {
+  IMPORT_EXISTS_REASON,
+  planImportRows,
+  type ParsedImportRow,
+  type RejectedImportRow,
+} from "@/lib/domain/import";
 import { MAX_ACTIVE_PRODUCTS } from "@/lib/domain/stock";
-
-const EXISTS_REASON =
-  "Ya existe un producto con este SKU (la importación solo crea, nunca actualiza).";
-const LIMIT_REASON = `Supera el límite de ${MAX_ACTIVE_PRODUCTS} SKU activos.`;
 
 async function existingSkuSet(
   executor: Pick<typeof db, "select">,
@@ -22,35 +23,29 @@ async function existingSkuSet(
   return new Set(rows.map((row) => row.sku));
 }
 
+async function activeCapacity(
+  executor: Pick<typeof db, "select">,
+): Promise<number> {
+  const [{ active }] = await executor
+    .select({ active: count() })
+    .from(products)
+    .where(eq(products.isActive, true));
+  return MAX_ACTIVE_PRODUCTS - active;
+}
+
 /**
  * Read-only preview (§9 step 1): marks each parsed row against the DB
- * (existing SKU, remaining 150-active capacity, in file order). The confirm
- * step re-validates everything under the lock — this is only informative.
+ * (existing SKU, remaining 150-active capacity, in file order) via the pure
+ * planner. The confirm step re-validates everything under the lock — this is
+ * only informative.
  */
 export async function previewImport(rows: ParsedImportRow[]): Promise<{
   creatable: ParsedImportRow[];
   rejected: RejectedImportRow[];
 }> {
   const existing = await existingSkuSet(db, rows.map((row) => row.sku));
-  const [{ active }] = await db
-    .select({ active: count() })
-    .from(products)
-    .where(eq(products.isActive, true));
-  let capacity = MAX_ACTIVE_PRODUCTS - active;
-
-  const creatable: ParsedImportRow[] = [];
-  const rejected: RejectedImportRow[] = [];
-  for (const row of rows) {
-    if (existing.has(row.sku)) {
-      rejected.push({ line: row.line, sku: row.sku, reason: EXISTS_REASON });
-    } else if (capacity <= 0) {
-      rejected.push({ line: row.line, sku: row.sku, reason: LIMIT_REASON });
-    } else {
-      creatable.push(row);
-      capacity--;
-    }
-  }
-  return { creatable, rejected };
+  const capacity = await activeCapacity(db);
+  return planImportRows(rows, existing, capacity, MAX_ACTIVE_PRODUCTS);
 }
 
 export type ImportOutcome = {
@@ -73,27 +68,15 @@ export async function executeImport(
   return db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(${PRODUCT_LIMIT_LOCK})`);
 
-    const rejected: RejectedImportRow[] = [];
+    const existing = await existingSkuSet(tx, rows.map((row) => row.sku));
+    const capacity = await activeCapacity(tx);
+    const plan = planImportRows(rows, existing, capacity, MAX_ACTIVE_PRODUCTS);
+
+    const rejected: RejectedImportRow[] = [...plan.rejected];
     const pendings: PendingAlert[] = [];
     let created = 0;
 
-    const existing = await existingSkuSet(tx, rows.map((row) => row.sku));
-    const [{ active }] = await tx
-      .select({ active: count() })
-      .from(products)
-      .where(eq(products.isActive, true));
-    let capacity = MAX_ACTIVE_PRODUCTS - active;
-
-    for (const row of rows) {
-      if (existing.has(row.sku)) {
-        rejected.push({ line: row.line, sku: row.sku, reason: EXISTS_REASON });
-        continue;
-      }
-      if (capacity <= 0) {
-        rejected.push({ line: row.line, sku: row.sku, reason: LIMIT_REASON });
-        continue;
-      }
-
+    for (const row of plan.creatable) {
       const [product] = await tx
         .insert(products)
         .values({
@@ -105,9 +88,9 @@ export async function executeImport(
         .onConflictDoNothing({ target: products.sku })
         .returning({ id: products.id });
       if (!product) {
-        // Raced with a concurrent creation despite the lock's serialization
-        // of imports (e.g. a manual create): reject, don't abort.
-        rejected.push({ line: row.line, sku: row.sku, reason: EXISTS_REASON });
+        // Raced with a concurrent manual creation despite the lock
+        // serializing imports: reject the row, don't abort.
+        rejected.push({ line: row.line, sku: row.sku, reason: IMPORT_EXISTS_REASON });
         continue;
       }
 
@@ -122,7 +105,6 @@ export async function executeImport(
         });
       }
       created++;
-      capacity--;
 
       const pending = await evaluateProductAlert(tx, product.id);
       if (pending) pendings.push(pending);

@@ -315,6 +315,7 @@ export default async function DineroPage(props: PageProps<"/dinero">) {
         currencyCode={currency}
         isAdmin={user.role === "admin"}
         hasFilters={Boolean(filters.kind || filters.categoryId)}
+        clearFiltersHref={`/dinero?${periodQuery(period).toString()}`}
       />
 
       <PaginationLinks
