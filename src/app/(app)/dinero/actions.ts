@@ -3,7 +3,7 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { ForbiddenError, requireRole } from "@/lib/auth-helpers";
+import { ForbiddenError, requireLedgerAuthor } from "@/lib/auth-helpers";
 import { db } from "@/lib/db/client";
 import { BALANCE_LOCK } from "@/lib/db/locks";
 import { cashCategories, cashMovements, settings } from "@/lib/db/schema";
@@ -37,7 +37,7 @@ export async function createCashMovementAction(
   formData: FormData,
 ): Promise<ActionResult> {
   try {
-    const user = await requireRole(); // both roles create movements
+    const user = await requireLedgerAuthor(); // both roles create movements
     const parsed = cashMovementSchema.safeParse({
       date: formData.get("date"),
       kind: formData.get("kind"),
@@ -105,7 +105,7 @@ export async function voidCashMovementAction(
   formData: FormData,
 ): Promise<ActionResult> {
   try {
-    const user = await requireRole("admin"); // soft-void is admin-only
+    const user = await requireLedgerAuthor("admin"); // soft-void is admin-only
     const parsed = voidReasonSchema.safeParse(formData.get("reason"));
     if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
 

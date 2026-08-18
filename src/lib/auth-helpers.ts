@@ -44,7 +44,26 @@ export class ForbiddenError extends Error {
 
 export async function requireRole(role?: "admin"): Promise<User> {
   const user = await getCurrentUser();
-  if (!user) throw new ForbiddenError("Tu sesión expiró. Iniciá sesión de nuevo.");
+  if (!user)
+    throw new ForbiddenError("Tu sesión expiró. Iniciá sesión de nuevo.");
   if (role === "admin" && user.role !== "admin") throw new ForbiddenError();
+  return user;
+}
+
+/**
+ * For actions that stamp authorship into an append-only history
+ * (stock_movements.created_by, cash_movements.created_by/voided_by).
+ *
+ * The support account is barred here rather than by convention: those rows
+ * can never be edited nor deleted, so a single movement would leak the
+ * account's existence to the client permanently.
+ */
+export async function requireLedgerAuthor(role?: "admin"): Promise<User> {
+  const user = await requireRole(role);
+  if (user.isSupport) {
+    throw new ForbiddenError(
+      "La cuenta de soporte no puede registrar movimientos. Usá un usuario de la instancia.",
+    );
+  }
   return user;
 }

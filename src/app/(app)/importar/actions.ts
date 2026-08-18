@@ -2,7 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { deliverAlerts } from "@/lib/alerts";
-import { ForbiddenError, requireRole } from "@/lib/auth-helpers";
+import {
+  ForbiddenError,
+  requireLedgerAuthor,
+  requireRole,
+} from "@/lib/auth-helpers";
 import { parseProductsCsv } from "@/lib/domain/import";
 import { executeImport, previewImport } from "@/lib/import-runner";
 
@@ -112,7 +116,7 @@ export async function confirmImportAction(
   formData: FormData,
 ): Promise<ConfirmResult> {
   try {
-    const user = await requireRole("admin");
+    const user = await requireLedgerAuthor("admin");
     const read = await readCsvFile(formData);
     if (!read.ok) return read;
 

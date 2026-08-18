@@ -81,7 +81,7 @@ Crear un proyecto Postgres en [Neon](https://neon.tech) o [Supabase](https://sup
 - **Neon**: copiar el connection string del host **`-pooler`**.
 - **Supabase**: usar el connection string de **Transaction pooler (puerto 6543)**, no el directo.
 
-Guardá también el connection string **directo** (sin pooler): se usa para backups.
+Guardá también el connection string del **Session pooler (puerto 5432)**: es el que se usa para migraciones y backups. En Supabase free la conexión *directa* (`db.<ref>.supabase.co`) resuelve solo a IPv6 y no sirve ni desde Vercel ni desde la mayoría de las redes.
 
 ### 2. Migraciones y configuración de instancia
 
@@ -162,14 +162,29 @@ El seed imprime **una única vez** la contraseña temporal del admin inicial: gu
 - **Supabase free** pausa los proyectos tras ~1 semana sin actividad: la instancia del cliente puede amanecer caída (la API pública incluida). **Neon free** no pausa pero tiene *cold starts* por scale-to-zero (primer request lento). Recomendación: **Neon** para empezar; si la instancia es crítica, plan pago del proveedor elegido.
 - **Resend**: sin dominio verificado solo envía al dueño de la cuenta (ver paso 4). El free tier (100 emails/día) sobra para alertas.
 - **Vercel Hobby** prohíbe uso comercial: instancia productiva ⇒ plan Pro.
-- **Backups**: los free tiers no garantizan point-in-time recovery y esta app es la única fuente de verdad del negocio del cliente. Backup manual con el connection string **directo** (no pooler):
+- **Backups**: los free tiers no garantizan point-in-time recovery y esta app es la única fuente de verdad del negocio del cliente. Supabase free directamente **no incluye backups automáticos**, así que el dump manual es el único que hay.
 
   ```bash
-  pg_dump "postgres://...directo..." --format=custom --file="backup-$(date +%Y%m%d).dump"
-  # Restaurar: pg_restore --clean --dbname "postgres://...directo..." backup-YYYYMMDD.dump
+  ./scripts/backup.sh                 # lee DATABASE_URL de .env, escribe en ~/backups/erp-unamargo
   ```
 
   Frecuencia sugerida: semanal + antes de cualquier cambio de configuración grande. Guardar los dumps fuera de la máquina del cliente.
+
+  Tres cosas que el script resuelve y que a mano se hacen mal:
+
+  1. **No va por la conexión directa.** En Supabase free `db.<ref>.supabase.co` resuelve solo a IPv6 y no conecta desde la mayoría de las redes. El backup sale por el **session pooler** (puerto 5432 del host `pooler`), no por el de transacciones.
+  2. **Filtra los schemas** con `--schema=public --schema=drizzle`. Sin el filtro el dump arrastra los schemas que administra Supabase (`auth` con 23 tablas, `storage`, `realtime`, `vault`, `graphql`) y al restaurar chocan con los que el proyecto nuevo ya trae.
+  3. **Incluye el schema `drizzle`**, que no es opcional: ahí vive el historial de migraciones. Restaurando solo `public`, el próximo `drizzle-kit migrate` reintenta la migración `0000` sobre tablas que ya existen y explota.
+
+  `pg_dump` tiene que ser de versión **mayor o igual a la del servidor** (Supabase corre Postgres 17). En macOS: `brew install libpq`, que queda keg-only en `/opt/homebrew/opt/libpq/bin`.
+
+  Restaurar:
+
+  ```bash
+  pg_restore --dbname "postgres://...session-pooler..." --no-owner --no-privileges backup.dump
+  ```
+
+  Tira un único error ignorable, `schema "public" already exists`, porque toda base nueva ya lo trae. Ciclo verificado el 18/08/2026 restaurando contra un Postgres limpio: los conteos de las 7 tablas coinciden, el historial de migraciones viaja, y las 7 sentencias `ENABLE ROW LEVEL SECURITY` del hardening se preservan.
 
 ## Fuera de alcance (por contrato)
 

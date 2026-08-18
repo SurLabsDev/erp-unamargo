@@ -39,48 +39,68 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
+  /* design.md §4: UN radio para todo. Los seis escalones de shadcn apuntan
+     al mismo token a proposito: para ablandar o afilar el producto entero
+     se toca --radius y nada mas. No reintroducir la escala. */
+  --radius-sm: var(--radius);
+  --radius-md: var(--radius);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+  --radius-xl: var(--radius);
+  --radius-2xl: var(--radius);
+  --radius-3xl: var(--radius);
+  --radius-4xl: var(--radius);
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.375rem; /* sober, minimal: small radius across the system */
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  /* design.md §1: ningun neutro con croma cero y ninguno blanco o negro puro.
+     Un solo tono calido (80/75/70/60) para TODOS los neutros: mezclar grises
+     calidos y frios es lo que hace que un producto se vea sucio.
+     Contrastes verificados por calculo, no a ojo (design.md §2 y §3). */
+  --background: oklch(0.995 0.002 80); /* #fefdfc */
+  --foreground: oklch(0.18 0.006 60); /* #14110f · 18.51:1 sobre background */
+  --card: oklch(0.995 0.002 80);
+  --card-foreground: oklch(0.18 0.006 60);
+  --popover: oklch(0.995 0.002 80);
+  --popover-foreground: oklch(0.18 0.006 60);
+
+  /* design.md §2: UN acento, el ember de Surlabs, y solo en accion primaria,
+     estado activo y foco. El texto encima va en tinta, NUNCA blanco:
+     tinta sobre ember 5.08:1 (pasa), blanco sobre ember 3.70:1 (no pasa). */
+  --primary: oklch(0.636 0.187 40); /* #e4571b */
+  --primary-foreground: oklch(0.18 0.006 60); /* 5.08:1 sobre --primary */
+
+  --secondary: oklch(0.968 0.004 80);
+  --secondary-foreground: oklch(0.18 0.006 60);
+  --muted: oklch(0.968 0.004 80); /* #f6f4f1 */
+  --muted-foreground: oklch(0.505 0.01 70); /* #68645f · 5.78:1 */
+  --accent: oklch(
+    0.968 0.004 80
+  ); /* superficie de hover, NO el acento de marca */
+  --accent-foreground: oklch(0.18 0.006 60);
+  --destructive: oklch(0.577 0.245 27.325); /* #e7000b · 4.69:1, pasa AA */
+
+  /* design.md §3: --border y --input NO son el mismo uso y por eso no comparten
+     valor. --border es filete decorativo (1.32:1). --input es el limite visual
+     de un control y WCAG 1.4.11 le exige 3:1: oklch(0.66) da 3.07:1, y todo lo
+     mas claro que eso no llega. NO subir esta luminosidad. */
+  --border: oklch(0.9 0.006 80); /* #e0deda · 1.32:1 · solo decorativo */
+  --input: oklch(0.66 0.01 75); /* #96918c · 3.07:1 · limite de control */
+  --ring: oklch(0.636 0.187 40); /* ember · 3.64:1 sobre background */
+
+  --chart-1: oklch(0.636 0.187 40);
+  --chart-2: oklch(0.505 0.01 70);
+  --chart-3: oklch(0.42 0.012 70);
+  --chart-4: oklch(0.34 0.01 65);
+  --chart-5: oklch(0.26 0.008 60);
+  --radius: 0.375rem; /* 6px. El unico radio del sistema (design.md §4). */
+  --sidebar: oklch(0.978 0.003 80);
+  --sidebar-foreground: oklch(0.18 0.006 60);
+  --sidebar-primary: oklch(0.636 0.187 40);
+  --sidebar-primary-foreground: oklch(0.18 0.006 60);
+  --sidebar-accent: oklch(0.955 0.005 80);
+  --sidebar-accent-foreground: oklch(0.18 0.006 60);
+  --sidebar-border: oklch(0.9 0.006 80);
+  --sidebar-ring: oklch(0.636 0.187 40);
 }
 
 .dark {
@@ -126,5 +146,18 @@
   }
   html {
     @apply font-sans;
+  }
+
+  /* design.md §8: un ERP se usa ocho horas por dia. Cualquier animacion que
+     guste el primer dia molesta el decimo. Solo color y opacidad, 200ms. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }

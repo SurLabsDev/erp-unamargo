@@ -267,11 +267,18 @@ async function countOtherActiveAdmins(
       and(
         eq(users.role, "admin"),
         eq(users.isActive, true),
+        // La cuenta de soporte NO cuenta como admin a estos efectos: si
+        // contara, el cliente podria desactivar su unico admin visible y
+        // quedarse sin administracion propia, con la UI diciendo que todo
+        // esta bien porque hay un admin oculto.
+        eq(users.isSupport, false),
         ne(users.id, excludeUserId),
       ),
     );
   return admins;
 }
+
+const SOPORTE_INTOCABLE = "El usuario no existe.";
 
 export async function createUserAction(
   formData: FormData,
@@ -295,7 +302,7 @@ export async function createUserAction(
       const [{ active }] = await tx
         .select({ active: count() })
         .from(users)
-        .where(eq(users.isActive, true));
+        .where(and(eq(users.isActive, true), eq(users.isSupport, false)));
       if (!canActivateUser(active)) {
         return { ok: false, error: USER_LIMIT_ERROR };
       }
@@ -329,12 +336,14 @@ export async function resetUserPasswordAction(
     await requireRole("admin");
     const password = generatePassword();
     const passwordHash = await bcrypt.hash(password, 12);
+    // Mismo mensaje que "no existe" a proposito: responder algo distinto
+    // confirmaria que hay una cuenta oculta detras de ese id.
     const [updated] = await db
       .update(users)
       .set({ passwordHash })
-      .where(eq(users.id, userId))
+      .where(and(eq(users.id, userId), eq(users.isSupport, false)))
       .returning({ email: users.email });
-    if (!updated) return { ok: false, error: "El usuario no existe." };
+    if (!updated) return { ok: false, error: SOPORTE_INTOCABLE };
 
     return {
       ok: true,
@@ -364,13 +373,15 @@ export async function setUserActiveAction(
         .where(eq(users.id, userId))
         .limit(1)
         .for("update");
-      if (!target) return { ok: false, error: "El usuario no existe." };
+      if (!target || target.isSupport) {
+        return { ok: false, error: SOPORTE_INTOCABLE };
+      }
 
       if (active) {
         const [{ activeCount }] = await tx
           .select({ activeCount: count() })
           .from(users)
-          .where(eq(users.isActive, true));
+          .where(and(eq(users.isActive, true), eq(users.isSupport, false)));
         if (!target.isActive && !canActivateUser(activeCount)) {
           return { ok: false, error: USER_LIMIT_ERROR };
         }
@@ -420,7 +431,9 @@ export async function setUserRoleAction(
         .where(eq(users.id, userId))
         .limit(1)
         .for("update");
-      if (!target) return { ok: false, error: "El usuario no existe." };
+      if (!target || target.isSupport) {
+        return { ok: false, error: SOPORTE_INTOCABLE };
+      }
 
       if (target.role === "admin" && role === "operator" && target.isActive) {
         const otherAdmins = await countOtherActiveAdmins(tx, userId);

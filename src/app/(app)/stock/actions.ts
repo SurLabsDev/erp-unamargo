@@ -4,7 +4,11 @@ import { and, count, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { deliverAlerts, evaluateProductAlert, type PendingAlert } from "@/lib/alerts";
-import { ForbiddenError, requireRole } from "@/lib/auth-helpers";
+import {
+  ForbiddenError,
+  requireLedgerAuthor,
+  requireRole,
+} from "@/lib/auth-helpers";
 import { db } from "@/lib/db/client";
 // Serializes operations that check the 150-active-SKU limit (create,
 // reactivate, import): a plain COUNT has a race between two admins.
@@ -45,7 +49,7 @@ export async function createProductAction(
   formData: FormData,
 ): Promise<ActionResult> {
   try {
-    const user = await requireRole("admin");
+    const user = await requireLedgerAuthor("admin");
     const parsed = productCreateSchema.safeParse({
       sku: formData.get("sku"),
       name: formData.get("name"),
@@ -229,7 +233,7 @@ export async function registerMovementAction(
   formData: FormData,
 ): Promise<ActionResult> {
   try {
-    const user = await requireRole(); // both roles register movements
+    const user = await requireLedgerAuthor(); // both roles register movements
     const noteRaw = formData.get("note");
     const parsed = movementInputSchema.safeParse({
       type: formData.get("type"),
