@@ -104,37 +104,42 @@
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  /* Paleta del formulario de Surlabs, misma familia calida que el modo claro y
+     con los mismos contrastes medidos. Se usa SOLO en /login: el resto del ERP
+     es claro porque se mira ocho horas seguidas (design.md, tabla final). */
+  --background: oklch(0.155 0.003 68); /* #0d0c0b ink */
+  --foreground: oklch(0.942 0.012 80); /* #f0ebe3 bone · 16.47:1 */
+  --card: oklch(0.197 0.007 78); /* #171512 ink-raised */
+  --card-foreground: oklch(0.942 0.012 80);
+  --popover: oklch(0.197 0.007 78);
+  --popover-foreground: oklch(0.942 0.012 80);
+  --primary: oklch(0.636 0.187 40); /* ember, el mismo que en claro */
+  --primary-foreground: oklch(0.155 0.003 68); /* tinta · 5.28:1 sobre ember */
+  --secondary: oklch(0.197 0.007 78);
+  --secondary-foreground: oklch(0.942 0.012 80);
+  --muted: oklch(0.197 0.007 78);
+  --muted-foreground: oklch(0.696 0.018 79); /* bone-dim · 7.19:1 */
+  --accent: oklch(0.235 0.008 78);
+  --accent-foreground: oklch(0.942 0.012 80);
+  --destructive: oklch(0.704 0.191 22.216); /* 5.62:1 sobre ink */
+  --border: oklch(0.29 0.008 78); /* filete decorativo */
+  --input: oklch(
+    0.512 0.014 80
+  ); /* #6b665e bone-faint · 3.43:1 · limite de control */
+  --ring: oklch(0.636 0.187 40); /* ember · 5.28:1 */
+  --chart-1: oklch(0.636 0.187 40);
+  --chart-2: oklch(0.696 0.018 79);
+  --chart-3: oklch(0.6 0.016 79);
+  --chart-4: oklch(0.512 0.014 80);
+  --chart-5: oklch(0.42 0.012 79);
+  --sidebar: oklch(0.197 0.007 78);
+  --sidebar-foreground: oklch(0.942 0.012 80);
+  --sidebar-primary: oklch(0.636 0.187 40);
+  --sidebar-primary-foreground: oklch(0.155 0.003 68);
+  --sidebar-accent: oklch(0.235 0.008 78);
+  --sidebar-accent-foreground: oklch(0.942 0.012 80);
+  --sidebar-border: oklch(0.29 0.008 78);
+  --sidebar-ring: oklch(0.636 0.187 40);
 }
 
 @layer base {
