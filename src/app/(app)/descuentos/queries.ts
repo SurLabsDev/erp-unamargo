@@ -119,7 +119,24 @@ export async function getCampaign(
       ),
     )
     .where(eq(discountTargets.campaignId, id))
-    .orderBy(asc(discountTargets.id));
+    // Product, then subtype, then category (same precedence order the detail
+    // screen re-sorts by), and within a level by the columns that make up
+    // that row's label, so two targets under the same level don't shuffle
+    // between page loads. Ordering by the label text itself isn't practical
+    // here: it's assembled in JS below, after the query runs.
+    .orderBy(
+      asc(sql`case
+        when ${discountTargets.productId} is not null then 0
+        when ${discountTargets.subtypeId} is not null then 1
+        else 2
+      end`),
+      asc(
+        sql`case when ${discountTargets.productId} is not null then ${products.sku} else ${productCategories.name} end`,
+      ),
+      asc(
+        sql`case when ${discountTargets.productId} is not null then ${products.name} else ${productSubtypes.name} end`,
+      ),
+    );
 
   const targets: TargetRow[] = rows.map((row): TargetRow => {
     if (row.productId !== null) {
