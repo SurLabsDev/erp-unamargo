@@ -69,6 +69,17 @@ describe("discountedPrice", () => {
   it("precio con un solo decimal se normaliza a dos", () => {
     expect(discountedPrice("10.5", 10)).toBe("9.45");
   });
+
+  // `products.price` has no `>= 0` CHECK, so a manual SQL edit could put a
+  // negative price in the database. Unreachable through the app today, but
+  // `fromCents` must not produce a malformed string like "-7.-21" if it ever
+  // is: BigInt `%` keeps the dividend's sign, so the naive
+  // `(cents % 100n).toString().padStart(2, "0")` puts the minus sign inside
+  // the fractional part instead of in front of the whole string.
+  it("centavos negativos dan un string decimal bien formado, no '-N.-N'", () => {
+    expect(discountedPrice("-8.00", 10)).toBe("-7.21");
+    expect(discountedPrice("-8.00", 10)).toMatch(/^-?\d+\.\d{2}$/);
+  });
 });
 
 const TODAY = "2026-08-12";
@@ -140,6 +151,32 @@ describe("resolveDiscount", () => {
     );
     expect(r?.percentage).toBe(25);
     expect(r?.campaignId).toBe("b");
+  });
+
+  it("a misma especificidad y mismo porcentaje gana la primera campana del arreglo, de forma deterministica", () => {
+    const r = resolveDiscount(
+      product,
+      [
+        campaign("a", 20, { categoryIds: ["cat-mate"] }),
+        campaign("b", 20, { categoryIds: ["cat-mate"] }),
+      ],
+      TODAY,
+    );
+    expect(r?.percentage).toBe(20);
+    expect(r?.campaignId).toBe("a");
+
+    // El orden importa: invertir el arreglo invierte la ganadora, que es
+    // justo por lo que el caller (`listCampaignsWithTargets`) tiene que
+    // devolver las campanas siempre en el mismo orden.
+    const reversed = resolveDiscount(
+      product,
+      [
+        campaign("b", 20, { categoryIds: ["cat-mate"] }),
+        campaign("a", 20, { categoryIds: ["cat-mate"] }),
+      ],
+      TODAY,
+    );
+    expect(reversed?.campaignId).toBe("b");
   });
 
   it("una campana pausada no aplica aunque las fechas coincidan", () => {

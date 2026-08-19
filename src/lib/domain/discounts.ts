@@ -49,10 +49,17 @@ function toCents(price: string): bigint {
   return BigInt(intPart) * 100n + BigInt(fracPart.padEnd(2, "0").slice(0, 2));
 }
 
+// Same approach as money.ts's `fromCents`: split the sign off first, format
+// the absolute value, then reattach it. BigInt `%` keeps the sign of its
+// operand, so formatting a negative value directly (as this function used to)
+// produced strings like "-8.-1" for -801n: the minus landed on the fractional
+// part too and `padStart` cannot pad a minus sign away.
 function fromCents(cents: bigint): string {
-  const intPart = cents / 100n;
-  const fracPart = (cents % 100n).toString().padStart(2, "0");
-  return `${intPart}.${fracPart}`;
+  const negative = cents < 0n;
+  const abs = negative ? -cents : cents;
+  const intPart = abs / 100n;
+  const fracPart = (abs % 100n).toString().padStart(2, "0");
+  return `${negative ? "-" : ""}${intPart}.${fracPart}`;
 }
 
 export type CampaignTargets = {
@@ -113,6 +120,11 @@ export function resolveDiscount(
   for (const matcher of levels) {
     const candidates = active.filter(matcher);
     if (candidates.length === 0) continue;
+    // `>` (not `>=`) means the FIRST campaign in `candidates` wins an exact
+    // percentage tie: this is the documented tiebreak, so it stays
+    // deterministic only because `candidates` preserves the order of
+    // `campaigns`, which callers must fetch pre-ordered (see the ORDER BY
+    // comment on `listCampaignsWithTargets` in descuentos/queries.ts).
     const winner = candidates.reduce((best, c) =>
       c.percentage > best.percentage ? c : best,
     );

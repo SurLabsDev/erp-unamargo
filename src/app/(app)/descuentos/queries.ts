@@ -159,12 +159,20 @@ export async function getCampaign(
  * Paused and ended campaigns are included ON PURPOSE: they are a few dozen
  * rows at most, and filtering by vigencia here would duplicate the state
  * rule that `campaignState` already owns and already has tests for.
+ *
+ * Ordered by `createdAt` then `id`: `resolveDiscount`'s tie-break keeps the
+ * FIRST campaign in this array when two are tied on both specificity and
+ * percentage, so without an explicit order "first" would be Postgres heap
+ * order, which can change after any unrelated UPDATE to this table.
  */
 export async function listCampaignsWithTargets(): Promise<
   CampaignWithTargets[]
 > {
   const [campaigns, targets] = await Promise.all([
-    db.select(campaignFields).from(discountCampaigns),
+    db
+      .select(campaignFields)
+      .from(discountCampaigns)
+      .orderBy(asc(discountCampaigns.createdAt), asc(discountCampaigns.id)),
     db
       .select({
         campaignId: discountTargets.campaignId,
