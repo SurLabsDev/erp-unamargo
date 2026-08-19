@@ -1,5 +1,6 @@
 import { z } from "zod";
 import "@/lib/zod-locale";
+import { fromCents, toCents } from "./cents";
 import { addDaysISO, isValidISODate } from "./dates";
 
 // Business rules for the shared operating balance as PURE functions/schemas.
@@ -159,23 +160,6 @@ export type PeriodSummary = {
   result: string;
   closingBalance: string;
 };
-
-/** Decimal string arithmetic in cents: exact for numeric(14,2) magnitudes. */
-function toCents(decimal: string): bigint {
-  const negative = decimal.startsWith("-");
-  const [intPart, fracPart = ""] = (negative ? decimal.slice(1) : decimal).split(".");
-  const cents =
-    BigInt(intPart || "0") * 100n + BigInt((fracPart + "00").slice(0, 2));
-  return negative ? -cents : cents;
-}
-
-function fromCents(cents: bigint): string {
-  const negative = cents < 0n;
-  const abs = negative ? -cents : cents;
-  const intPart = abs / 100n;
-  const fracPart = String(abs % 100n).padStart(2, "0");
-  return `${negative ? "-" : ""}${intPart}.${fracPart}`;
-}
 
 /**
  * §7.2 exact semantics:

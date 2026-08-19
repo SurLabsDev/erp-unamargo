@@ -2,6 +2,8 @@
 // Money is handled in cents using BigInt, same as the money module
 // (see DECISIONS.md): float arithmetic rounds incorrectly and here the result is a price.
 
+import { fromCents, toCents } from "./cents";
+
 export const MIN_PERCENTAGE = 1;
 /** One unit too much converts 10 into 100 and gives away the catalog. To give
  * something away, the price is set to 0 manually, which is a visible decision. */
@@ -42,24 +44,6 @@ export function discountedPrice(price: string, percentage: number): string {
   // Half-up rounding: 14999.85 cents of discount rounds to 15000.
   const discount = (cents * BigInt(percentage) * 2n + 100n) / 200n;
   return fromCents(cents - discount);
-}
-
-function toCents(price: string): bigint {
-  const [intPart, fracPart = ""] = price.split(".");
-  return BigInt(intPart) * 100n + BigInt(fracPart.padEnd(2, "0").slice(0, 2));
-}
-
-// Same approach as money.ts's `fromCents`: split the sign off first, format
-// the absolute value, then reattach it. BigInt `%` keeps the sign of its
-// operand, so formatting a negative value directly (as this function used to)
-// produced strings like "-8.-1" for -801n: the minus landed on the fractional
-// part too and `padStart` cannot pad a minus sign away.
-function fromCents(cents: bigint): string {
-  const negative = cents < 0n;
-  const abs = negative ? -cents : cents;
-  const intPart = abs / 100n;
-  const fracPart = (abs % 100n).toString().padStart(2, "0");
-  return `${negative ? "-" : ""}${intPart}.${fracPart}`;
 }
 
 export type CampaignTargets = {
