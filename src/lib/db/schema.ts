@@ -156,6 +156,30 @@ export const products = pgTable(
   ],
 );
 
+// Fotos del producto. Los bytes viven en Supabase Storage (bucket `productos`);
+// aca solo guardamos la ruta.
+//
+// `path` incluye un uuid y NUNCA se reutiliza. Verificado a mano: las URLs
+// publicas de Supabase Storage quedan cacheadas en su CDN, asi que borrar un
+// objeto NO lo saca de la cache al instante. Si al reemplazar una foto se
+// reusara la ruta, el cliente seguiria viendo la vieja sin entender por que.
+// Con un nombre nuevo por subida, la URL cambia y la cache deja de importar.
+export const productImages = pgTable(
+  "product_images",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    productId: uuid("product_id")
+      .notNull()
+      .references(() => products.id),
+    path: text("path").notNull().unique(), // "MATE-IMP-CUE/<uuid>.webp"
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("product_images_product_idx").on(t.productId, t.sortOrder)],
+);
+
 // APPEND-ONLY ledger: never UPDATE nor DELETE rows here.
 export const stockMovements = pgTable(
   "stock_movements",
@@ -281,6 +305,7 @@ export type Settings = typeof settings.$inferSelect;
 export type ProductCategory = typeof productCategories.$inferSelect;
 export type ProductSubtype = typeof productSubtypes.$inferSelect;
 export type Product = typeof products.$inferSelect;
+export type ProductImage = typeof productImages.$inferSelect;
 export type StockMovement = typeof stockMovements.$inferSelect;
 export type CashCategory = typeof cashCategories.$inferSelect;
 export type CashMovement = typeof cashMovements.$inferSelect;

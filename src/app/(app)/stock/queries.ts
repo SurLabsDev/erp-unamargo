@@ -1,6 +1,12 @@
 import { and, asc, count, desc, eq, gte, lt, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { products, stockMovements, users, type Product } from "@/lib/db/schema";
+import {
+  productImages,
+  products,
+  stockMovements,
+  users,
+  type Product,
+} from "@/lib/db/schema";
 import { zonedDateRangeToUtc } from "@/lib/domain/dates";
 
 export const MOVEMENTS_PAGE_SIZE = 50;
@@ -183,4 +189,17 @@ export async function listRecentMovements(
     .innerJoin(users, eq(stockMovements.createdBy, users.id))
     .orderBy(desc(stockMovements.createdAt), desc(stockMovements.id))
     .limit(limit);
+}
+
+/** Fotos de un producto, la principal primero. */
+export async function listProductImages(productId: string) {
+  return db
+    .select({
+      id: productImages.id,
+      path: productImages.path,
+      sortOrder: productImages.sortOrder,
+    })
+    .from(productImages)
+    .where(eq(productImages.productId, productId))
+    .orderBy(asc(productImages.sortOrder), asc(productImages.id));
 }

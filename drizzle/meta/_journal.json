@@ -29,6 +29,13 @@
       "when": 1787058748824,
       "tag": "0003_old_wong",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1787132678521,
+      "tag": "0004_exotic_yellowjacket",
+      "breakpoints": true
     }
   ]
 }

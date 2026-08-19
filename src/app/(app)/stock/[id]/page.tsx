@@ -10,9 +10,15 @@ import { isLowStock } from "@/lib/domain/stock";
 import { formatInteger } from "@/lib/format";
 import { parsePageParam } from "@/lib/params";
 import { getSettings } from "@/lib/settings";
+import { publicImageUrl, storageConfigured } from "@/lib/storage";
 import { DetailActions } from "./detail-actions";
+import { ProductImages } from "./product-images";
 import { MovementsTable } from "../movements-table";
-import { getCatalogProduct, listMovements } from "../queries";
+import {
+  getCatalogProduct,
+  listMovements,
+  listProductImages,
+} from "../queries";
 
 export const metadata: Metadata = { title: "Producto" };
 
@@ -32,10 +38,10 @@ export default async function ProductDetailPage(
   ]);
   if (!product) notFound();
 
-  const movements = await listMovements(
-    { productId: id, page },
-    settings.timezone,
-  );
+  const [movements, imagenes] = await Promise.all([
+    listMovements({ productId: id, page }, settings.timezone),
+    listProductImages(id),
+  ]);
 
   return (
     <div className="grid gap-6">
@@ -83,7 +89,9 @@ export default async function ProductDetailPage(
             )}
           </dd>
           {product.minStock === 0 ? (
-            <p className="text-xs text-muted-foreground">Sin control de alerta</p>
+            <p className="text-xs text-muted-foreground">
+              Sin control de alerta
+            </p>
           ) : null}
         </div>
         <div>
@@ -93,6 +101,17 @@ export default async function ProductDetailPage(
           </dd>
         </div>
       </dl>
+
+      <ProductImages
+        productId={product.id}
+        imagenes={imagenes.map((imagen, indice) => ({
+          id: imagen.id,
+          url: publicImageUrl(imagen.path),
+          esPrincipal: indice === 0,
+        }))}
+        puedeEditar={user.role === "admin"}
+        storageConfigurado={storageConfigured()}
+      />
 
       <div className="grid gap-3">
         <h2 className="text-sm font-semibold">Historial de movimientos</h2>

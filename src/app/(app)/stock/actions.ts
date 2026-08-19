@@ -3,7 +3,11 @@
 import { and, count, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { deliverAlerts, evaluateProductAlert, type PendingAlert } from "@/lib/alerts";
+import {
+  deliverAlerts,
+  evaluateProductAlert,
+  type PendingAlert,
+} from "@/lib/alerts";
 import {
   ForbiddenError,
   requireLedgerAuthor,
@@ -13,7 +17,12 @@ import { db } from "@/lib/db/client";
 // Serializes operations that check the 150-active-SKU limit (create,
 // reactivate, import): a plain COUNT has a race between two admins.
 import { PRODUCT_LIMIT_LOCK } from "@/lib/db/locks";
-import { products, stockMovements } from "@/lib/db/schema";
+import {
+  deleteProductImage,
+  storageConfigured,
+  uploadProductImage,
+} from "@/lib/storage";
+import { productImages, products, stockMovements } from "@/lib/db/schema";
 import {
   MAX_ACTIVE_PRODUCTS,
   computeAdjustmentDelta,
@@ -23,8 +32,7 @@ import {
 } from "@/lib/domain/stock";
 
 export type ActionResult =
-  | { ok: true; message: string }
-  | { ok: false; error: string };
+  { ok: true; message: string } | { ok: false; error: string };
 
 const LIMIT_ERROR = `Límite alcanzado: la instancia admite hasta ${MAX_ACTIVE_PRODUCTS} SKU activos. Desactivá un producto para liberar lugar.`;
 
@@ -33,7 +41,8 @@ function firstIssue(error: z.ZodError): string {
 }
 
 function handleError(error: unknown): ActionResult {
-  if (error instanceof ForbiddenError) return { ok: false, error: error.message };
+  if (error instanceof ForbiddenError)
+    return { ok: false, error: error.message };
   console.error("[stock:action]", error);
   return { ok: false, error: "Ocurrió un error, intentá de nuevo." };
 }
@@ -61,13 +70,16 @@ export async function createProductAction(
 
     let pendingAlert: PendingAlert | null = null;
     const result = await db.transaction(async (tx): Promise<ActionResult> => {
-      await tx.execute(sql`select pg_advisory_xact_lock(${PRODUCT_LIMIT_LOCK})`);
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(${PRODUCT_LIMIT_LOCK})`,
+      );
 
       const [{ active }] = await tx
         .select({ active: count() })
         .from(products)
         .where(eq(products.isActive, true));
-      if (active >= MAX_ACTIVE_PRODUCTS) return { ok: false, error: LIMIT_ERROR };
+      if (active >= MAX_ACTIVE_PRODUCTS)
+        return { ok: false, error: LIMIT_ERROR };
 
       const [existing] = await tx
         .select({ id: products.id })
@@ -157,7 +169,10 @@ export async function updateProductAction(
           .where(eq(products.sku, sku))
           .limit(1);
         if (duplicate) {
-          return { ok: false, error: `Ya existe un producto con el SKU ${sku}.` };
+          return {
+            ok: false,
+            error: `Ya existe un producto con el SKU ${sku}.`,
+          };
         }
         nextSku = sku;
       }
@@ -191,12 +206,15 @@ export async function setProductActiveAction(
     let pendingAlert: PendingAlert | null = null;
     const result = await db.transaction(async (tx): Promise<ActionResult> => {
       if (active) {
-        await tx.execute(sql`select pg_advisory_xact_lock(${PRODUCT_LIMIT_LOCK})`);
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(${PRODUCT_LIMIT_LOCK})`,
+        );
         const [{ current }] = await tx
           .select({ current: count() })
           .from(products)
           .where(and(eq(products.isActive, true)));
-        if (current >= MAX_ACTIVE_PRODUCTS) return { ok: false, error: LIMIT_ERROR };
+        if (current >= MAX_ACTIVE_PRODUCTS)
+          return { ok: false, error: LIMIT_ERROR };
       }
 
       const [product] = await tx
@@ -240,7 +258,10 @@ export async function registerMovementAction(
       productId: formData.get("productId"),
       quantity: formData.get("quantity") ?? undefined,
       countedStock: formData.get("countedStock") ?? undefined,
-      note: typeof noteRaw === "string" && noteRaw.trim() !== "" ? noteRaw : undefined,
+      note:
+        typeof noteRaw === "string" && noteRaw.trim() !== ""
+          ? noteRaw
+          : undefined,
     });
     if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
     const input = parsed.data;
@@ -248,7 +269,8 @@ export async function registerMovementAction(
     let pendingAlert: PendingAlert | null = null;
     const result = await db.transaction(async (tx): Promise<ActionResult> => {
       if (input.type === "entrada" || input.type === "salida") {
-        const delta = input.type === "entrada" ? input.quantity : -input.quantity;
+        const delta =
+          input.type === "entrada" ? input.quantity : -input.quantity;
 
         // Atomic guarded update: never read-then-write without a lock. The
         // WHERE guard makes concurrent salidas unable to drive stock < 0
@@ -262,7 +284,10 @@ export async function registerMovementAction(
 
         if (rows.length === 0) {
           const [product] = await tx
-            .select({ isActive: products.isActive, currentStock: products.currentStock })
+            .select({
+              isActive: products.isActive,
+              currentStock: products.currentStock,
+            })
             .from(products)
             .where(eq(products.id, input.productId))
             .limit(1);
@@ -297,7 +322,9 @@ export async function registerMovementAction(
       const [product] = await tx
         .select({ currentStock: products.currentStock })
         .from(products)
-        .where(and(eq(products.id, input.productId), eq(products.isActive, true)))
+        .where(
+          and(eq(products.id, input.productId), eq(products.isActive, true)),
+        )
         .limit(1)
         .for("update");
       if (!product) {
@@ -307,11 +334,17 @@ export async function registerMovementAction(
           .where(eq(products.id, input.productId))
           .limit(1);
         return exists
-          ? { ok: false, error: "El producto está inactivo: no admite movimientos." }
+          ? {
+              ok: false,
+              error: "El producto está inactivo: no admite movimientos.",
+            }
           : { ok: false, error: "El producto no existe." };
       }
 
-      const delta = computeAdjustmentDelta(product.currentStock, input.countedStock);
+      const delta = computeAdjustmentDelta(
+        product.currentStock,
+        input.countedStock,
+      );
       if (delta === 0) {
         return {
           ok: true,
@@ -340,6 +373,140 @@ export async function registerMovementAction(
       revalidateStock(input.productId);
     }
     return result;
+  } catch (error) {
+    return handleError(error);
+  }
+}
+
+// --- Fotos del producto -----------------------------------------------------
+
+/**
+ * La imagen llega YA redimensionada por el navegador (ver product-images.tsx).
+ * Eso no es una optimizacion: Vercel corta el cuerpo del request en 4.5MB y
+ * devuelve FUNCTION_PAYLOAD_TOO_LARGE antes de ejecutar nada, asi que una foto
+ * de celular cruda fallaria justo en el caso normal. El limite de abajo es la
+ * red de contencion por si alguien postea a mano.
+ */
+const MAX_BYTES_SUBIDA = 2 * 1024 * 1024;
+const TIPOS_ACEPTADOS = ["image/webp", "image/jpeg", "image/png"];
+
+export async function uploadProductImageAction(
+  productId: string,
+  formData: FormData,
+): Promise<ActionResult> {
+  try {
+    await requireRole("admin");
+    if (!storageConfigured()) {
+      return {
+        ok: false,
+        error: "El almacenamiento de fotos no está configurado.",
+      };
+    }
+
+    const file = formData.get("file");
+    if (!(file instanceof File) || file.size === 0) {
+      return { ok: false, error: "Elegí una imagen." };
+    }
+    if (!TIPOS_ACEPTADOS.includes(file.type)) {
+      return { ok: false, error: "El formato tiene que ser WebP, JPG o PNG." };
+    }
+    if (file.size > MAX_BYTES_SUBIDA) {
+      return { ok: false, error: "La imagen es demasiado grande." };
+    }
+
+    const [product] = await db
+      .select({ id: products.id, sku: products.sku })
+      .from(products)
+      .where(eq(products.id, productId))
+      .limit(1);
+    if (!product) return { ok: false, error: "El producto no existe." };
+
+    const subida = await uploadProductImage({
+      sku: product.sku,
+      bytes: await file.arrayBuffer(),
+      contentType: file.type,
+    });
+    if (!subida.ok) return { ok: false, error: subida.error };
+
+    // La fila se inserta DESPUES de que el objeto exista: al reves, un fallo de
+    // subida dejaria una fila apuntando a una foto que no esta.
+    const [{ siguiente }] = await db
+      .select({
+        siguiente: sql<number>`coalesce(max(${productImages.sortOrder}), -1) + 1`,
+      })
+      .from(productImages)
+      .where(eq(productImages.productId, productId));
+
+    await db
+      .insert(productImages)
+      .values({ productId, path: subida.path, sortOrder: siguiente });
+
+    revalidatePath(`/stock/${productId}`);
+    revalidatePath("/stock");
+    return { ok: true, message: "Foto agregada." };
+  } catch (error) {
+    return handleError(error);
+  }
+}
+
+export async function deleteProductImageAction(
+  imageId: string,
+): Promise<ActionResult> {
+  try {
+    await requireRole("admin");
+    const [row] = await db
+      .select({
+        id: productImages.id,
+        productId: productImages.productId,
+        path: productImages.path,
+      })
+      .from(productImages)
+      .where(eq(productImages.id, imageId))
+      .limit(1);
+    if (!row) return { ok: false, error: "La foto no existe." };
+
+    // Primero la fila, despues el objeto. Si el borrado del archivo falla,
+    // queda un huerfano en el bucket (invisible y barato); al reves quedaria
+    // una foto rota en la web del cliente, que se ve.
+    await db.delete(productImages).where(eq(productImages.id, imageId));
+    await deleteProductImage(row.path);
+
+    revalidatePath(`/stock/${row.productId}`);
+    revalidatePath("/stock");
+    return { ok: true, message: "Foto eliminada." };
+  } catch (error) {
+    return handleError(error);
+  }
+}
+
+/** La foto principal es la de sortOrder mas bajo: es la que va a mostrar la
+ * web en el listado. */
+export async function setPrimaryProductImageAction(
+  imageId: string,
+): Promise<ActionResult> {
+  try {
+    await requireRole("admin");
+    const [row] = await db
+      .select({ productId: productImages.productId })
+      .from(productImages)
+      .where(eq(productImages.id, imageId))
+      .limit(1);
+    if (!row) return { ok: false, error: "La foto no existe." };
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(productImages)
+        .set({ sortOrder: sql`${productImages.sortOrder} + 1` })
+        .where(eq(productImages.productId, row.productId));
+      await tx
+        .update(productImages)
+        .set({ sortOrder: 0 })
+        .where(eq(productImages.id, imageId));
+    });
+
+    revalidatePath(`/stock/${row.productId}`);
+    revalidatePath("/stock");
+    return { ok: true, message: "Foto principal actualizada." };
   } catch (error) {
     return handleError(error);
   }
