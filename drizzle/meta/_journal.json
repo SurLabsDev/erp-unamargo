@@ -43,6 +43,13 @@
       "when": 1787133851523,
       "tag": "0005_serious_the_phantom",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787136711568,
+      "tag": "0006_spicy_blizzard",
+      "breakpoints": true
     }
   ]
 }

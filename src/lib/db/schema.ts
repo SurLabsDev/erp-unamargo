@@ -13,6 +13,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -188,6 +189,75 @@ export const productImages = pgTable(
   },
   (t) => [index("product_images_product_idx").on(t.productId, t.sortOrder)],
 );
+
+// Discount campaigns. The discount is DISPLAY information, just like
+// products.price: it does not touch stock or the Money module.
+export const discountCampaigns = pgTable(
+  "discount_campaigns",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    percentage: smallint("percentage").notNull(),
+    startsOn: date("starts_on").notNull(),
+    endsOn: date("ends_on").notNull(),
+    // Manual switch, in addition to the dates: lets a campaign be paused or
+    // prepared without deleting it.
+    isActive: boolean("is_active").notNull().default(true),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    check(
+      "discount_campaigns_percentage_check",
+      sql`${t.percentage} between 1 and 90`,
+    ),
+    check("discount_campaigns_dates_check", sql`${t.endsOn} >= ${t.startsOn}`),
+  ],
+);
+
+// What a campaign points at. Each row points to EXACTLY one target, and the
+// three columns keep real foreign keys: a polymorphic `target_id` could not
+// have them and would leave targets pointing at deleted products.
+export const discountTargets = pgTable(
+  "discount_targets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    campaignId: uuid("campaign_id")
+      .notNull()
+      .references(() => discountCampaigns.id),
+    productId: uuid("product_id").references(() => products.id),
+    subtypeId: uuid("subtype_id").references(() => productSubtypes.id),
+    categoryId: uuid("category_id").references(() => productCategories.id),
+  },
+  (t) => [
+    check(
+      "discount_targets_exactly_one_check",
+      sql`num_nonnulls(${t.productId}, ${t.subtypeId}, ${t.categoryId}) = 1`,
+    ),
+    index("discount_targets_campaign_idx").on(t.campaignId),
+    // PARTIAL uniques: a plain unique would not stop repeated rows with
+    // null, because in Postgres nulls never compare equal to each other.
+    uniqueIndex("discount_targets_campaign_product_key")
+      .on(t.campaignId, t.productId)
+      .where(sql`${t.productId} is not null`),
+    uniqueIndex("discount_targets_campaign_subtype_key")
+      .on(t.campaignId, t.subtypeId)
+      .where(sql`${t.subtypeId} is not null`),
+    uniqueIndex("discount_targets_campaign_category_key")
+      .on(t.campaignId, t.categoryId)
+      .where(sql`${t.categoryId} is not null`),
+  ],
+);
+
+export type DiscountCampaignRow = typeof discountCampaigns.$inferSelect;
+export type DiscountTargetRow = typeof discountTargets.$inferSelect;
 
 // APPEND-ONLY ledger: never UPDATE nor DELETE rows here.
 export const stockMovements = pgTable(
