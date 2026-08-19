@@ -1,6 +1,6 @@
 import { and, asc, count, desc, eq, gte, lt, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { SUPPORT_DISPLAY_NAME } from "@/lib/format";
+import { SUPPORT_DISPLAY_NAME, todayInTimeZone } from "@/lib/format";
 import {
   productCategories,
   productImages,
@@ -10,65 +10,90 @@ import {
   users,
   type Product,
 } from "@/lib/db/schema";
+import { listCampaignsWithTargets } from "@/app/(app)/descuentos/queries";
 import { zonedDateRangeToUtc } from "@/lib/domain/dates";
+import { resolveDiscount, type AppliedDiscount } from "@/lib/domain/discounts";
+import { getSettings } from "@/lib/settings";
 
 export const MOVEMENTS_PAGE_SIZE = 50;
 
-export type CatalogRow = Product & { hasMovements: boolean };
+export type CatalogRow = Product & {
+  hasMovements: boolean;
+  discount?: AppliedDiscount | null;
+};
 
 /** Full catalog (≤150 active rows by contract): filtering happens client-side. */
 export async function listCatalog(): Promise<CatalogRow[]> {
-  return db
-    .select({
-      id: products.id,
-      sku: products.sku,
-      name: products.name,
-      isActive: products.isActive,
-      currentStock: products.currentStock,
-      minStock: products.minStock,
-      categoryId: products.categoryId,
-      subtypeId: products.subtypeId,
-      price: products.price,
-      description: products.description,
-      slug: products.slug,
-      lowStockAlertedAt: products.lowStockAlertedAt,
-      createdAt: products.createdAt,
-      updatedAt: products.updatedAt,
-      // Identifiers spelled out: interpolating drizzle columns inside a
-      // subquery renders them unqualified ("id" resolves to the wrong table).
-      hasMovements: sql<boolean>`exists (select 1 from stock_movements sm where sm.product_id = products.id)`,
-    })
-    .from(products)
-    .orderBy(desc(products.isActive), asc(products.sku));
+  const [rows, campaigns, settings] = await Promise.all([
+    db
+      .select({
+        id: products.id,
+        sku: products.sku,
+        name: products.name,
+        isActive: products.isActive,
+        currentStock: products.currentStock,
+        minStock: products.minStock,
+        categoryId: products.categoryId,
+        subtypeId: products.subtypeId,
+        price: products.price,
+        description: products.description,
+        slug: products.slug,
+        lowStockAlertedAt: products.lowStockAlertedAt,
+        createdAt: products.createdAt,
+        updatedAt: products.updatedAt,
+        // Identifiers spelled out: interpolating drizzle columns inside a
+        // subquery renders them unqualified ("id" resolves to the wrong table).
+        hasMovements: sql<boolean>`exists (select 1 from stock_movements sm where sm.product_id = products.id)`,
+      })
+      .from(products)
+      .orderBy(desc(products.isActive), asc(products.sku)),
+    // Fetched ONCE for the whole catalog and resolved in memory below: up to
+    // 150 rows, so a per-row query here would be an N+1.
+    listCampaignsWithTargets(),
+    getSettings(),
+  ]);
+
+  const today = todayInTimeZone(settings.timezone);
+  return rows.map((row) => ({
+    ...row,
+    discount: resolveDiscount(row, campaigns, today),
+  }));
 }
 
 export async function getCatalogProduct(
   id: string,
 ): Promise<CatalogRow | undefined> {
-  const [row] = await db
-    .select({
-      id: products.id,
-      sku: products.sku,
-      name: products.name,
-      isActive: products.isActive,
-      currentStock: products.currentStock,
-      minStock: products.minStock,
-      categoryId: products.categoryId,
-      subtypeId: products.subtypeId,
-      price: products.price,
-      description: products.description,
-      slug: products.slug,
-      lowStockAlertedAt: products.lowStockAlertedAt,
-      createdAt: products.createdAt,
-      updatedAt: products.updatedAt,
-      // Identifiers spelled out: interpolating drizzle columns inside a
-      // subquery renders them unqualified ("id" resolves to the wrong table).
-      hasMovements: sql<boolean>`exists (select 1 from stock_movements sm where sm.product_id = products.id)`,
-    })
-    .from(products)
-    .where(eq(products.id, id))
-    .limit(1);
-  return row;
+  const [[row], campaigns, settings] = await Promise.all([
+    db
+      .select({
+        id: products.id,
+        sku: products.sku,
+        name: products.name,
+        isActive: products.isActive,
+        currentStock: products.currentStock,
+        minStock: products.minStock,
+        categoryId: products.categoryId,
+        subtypeId: products.subtypeId,
+        price: products.price,
+        description: products.description,
+        slug: products.slug,
+        lowStockAlertedAt: products.lowStockAlertedAt,
+        createdAt: products.createdAt,
+        updatedAt: products.updatedAt,
+        // Identifiers spelled out: interpolating drizzle columns inside a
+        // subquery renders them unqualified ("id" resolves to the wrong table).
+        hasMovements: sql<boolean>`exists (select 1 from stock_movements sm where sm.product_id = products.id)`,
+      })
+      .from(products)
+      .where(eq(products.id, id))
+      .limit(1),
+    listCampaignsWithTargets(),
+    getSettings(),
+  ]);
+  if (!row) return undefined;
+
+  const today = todayInTimeZone(settings.timezone);
+  return { ...row, discount: resolveDiscount(row, campaigns, today) };
 }
 
 export type MovementRow = {

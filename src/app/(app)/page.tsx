@@ -11,6 +11,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { requireUser } from "@/lib/auth-helpers";
+import { countActiveCampaigns } from "./descuentos/queries";
 import { computePeriodSummary, resolvePeriod } from "@/lib/domain/money";
 import { MOVEMENT_TYPE_LABELS } from "@/lib/domain/stock";
 import {
@@ -36,12 +37,15 @@ function formatDelta(delta: number): string {
 export default async function PanelPage() {
   const user = await requireUser();
   const settings = await getSettings();
-  const period = resolvePeriod({}, todayInTimeZone(settings.timezone));
-  const [lowStock, recentMovements, totals] = await Promise.all([
-    listLowStockProducts(),
-    listRecentMovements(5),
-    periodTotals(period),
-  ]);
+  const today = todayInTimeZone(settings.timezone);
+  const period = resolvePeriod({}, today);
+  const [lowStock, recentMovements, totals, activeCampaigns] =
+    await Promise.all([
+      listLowStockProducts(),
+      listRecentMovements(5),
+      periodTotals(period),
+      countActiveCampaigns(today),
+    ]);
   const summary = computePeriodSummary(settings.initialBalance, totals);
 
   return (
@@ -50,6 +54,21 @@ export default async function PanelPage() {
         title={`Hola, ${user.name.split(" ")[0]}`}
         description="Resumen general de la operación."
       />
+      {activeCampaigns > 0 ? (
+        <Link
+          href="/descuentos"
+          className="mb-4 flex items-center justify-between gap-3 rounded-md border bg-muted/50 px-4 py-3 text-sm hover:border-foreground/30"
+        >
+          <span>
+            {activeCampaigns === 1
+              ? "1 campaña de descuento activa."
+              : `${activeCampaigns} campañas de descuento activas.`}
+          </span>
+          <span className="shrink-0 underline underline-offset-4">
+            Ver descuentos
+          </span>
+        </Link>
+      ) : null}
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>

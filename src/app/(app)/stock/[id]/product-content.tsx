@@ -16,6 +16,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { updateProductContentAction } from "../actions";
 import { ClassificationSelects } from "../classification-selects";
 import type { OpcionClasificacion } from "../queries";
+import type { AppliedDiscount } from "@/lib/domain/discounts";
+import { formatMoney } from "@/lib/format";
 
 export function ProductContent(props: {
   productId: string;
@@ -27,6 +29,7 @@ export function ProductContent(props: {
   currencyCode: string;
   opciones: OpcionClasificacion[];
   puedeEditar: boolean;
+  discount?: AppliedDiscount | null;
 }) {
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +76,19 @@ export function ProductContent(props: {
               placeholder="0,00"
               disabled={!props.puedeEditar}
             />
+            {props.discount ? (
+              <p className="text-sm text-muted-foreground">
+                Precio con descuento vigente:{" "}
+                <span className="font-medium text-foreground">
+                  {formatMoney(
+                    props.discount.priceFinal,
+                    props.currencyCode,
+                  )}
+                </span>{" "}
+                por la campaña &ldquo;{props.discount.campaignName}&rdquo; (
+                {props.discount.percentage}%).
+              </p>
+            ) : null}
           </div>
 
           <div className="grid gap-2">
