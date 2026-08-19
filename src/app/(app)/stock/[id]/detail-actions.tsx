@@ -8,7 +8,10 @@ import { ProductActiveDialog } from "../product-active-dialog";
 import { ProductFormDialog } from "../product-form-dialog";
 import type { CatalogRow } from "../queries";
 
-export function DetailActions(props: { product: CatalogRow; isAdmin: boolean }) {
+export function DetailActions(props: {
+  product: CatalogRow;
+  isAdmin: boolean;
+}) {
   const { product, isAdmin } = props;
   const [movementOpen, setMovementOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);

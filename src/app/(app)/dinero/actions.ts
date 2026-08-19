@@ -3,7 +3,7 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { ForbiddenError, requireLedgerAuthor } from "@/lib/auth-helpers";
+import { ForbiddenError, requireRole } from "@/lib/auth-helpers";
 import { db } from "@/lib/db/client";
 import { BALANCE_LOCK } from "@/lib/db/locks";
 import { cashCategories, cashMovements, settings } from "@/lib/db/schema";
@@ -15,15 +15,15 @@ import {
 import { todayInTimeZone } from "@/lib/format";
 
 export type ActionResult =
-  | { ok: true; message: string }
-  | { ok: false; error: string };
+  { ok: true; message: string } | { ok: false; error: string };
 
 function firstIssue(error: z.ZodError): string {
   return error.issues[0]?.message ?? "Datos inválidos.";
 }
 
 function handleError(error: unknown): ActionResult {
-  if (error instanceof ForbiddenError) return { ok: false, error: error.message };
+  if (error instanceof ForbiddenError)
+    return { ok: false, error: error.message };
   console.error("[dinero:action]", error);
   return { ok: false, error: "Ocurrió un error, intentá de nuevo." };
 }
@@ -37,7 +37,7 @@ export async function createCashMovementAction(
   formData: FormData,
 ): Promise<ActionResult> {
   try {
-    const user = await requireLedgerAuthor(); // both roles create movements
+    const user = await requireRole(); // both roles create movements
     const parsed = cashMovementSchema.safeParse({
       date: formData.get("date"),
       kind: formData.get("kind"),
@@ -52,9 +52,12 @@ export async function createCashMovementAction(
       // Shared balance lock: concurrent movements don't block each other, but
       // the exclusive lock in updateBalanceSettingsAction can't move the cut
       // date between our date validation and the INSERT (§7.1 invariant).
-      await tx.execute(sql`select pg_advisory_xact_lock_shared(${BALANCE_LOCK})`);
+      await tx.execute(
+        sql`select pg_advisory_xact_lock_shared(${BALANCE_LOCK})`,
+      );
       const [instance] = await tx.select().from(settings).limit(1);
-      if (!instance) return { ok: false, error: "La instancia no está configurada." };
+      if (!instance)
+        return { ok: false, error: "La instancia no está configurada." };
 
       const dateError = validateCashDate(
         input.date,
@@ -89,7 +92,9 @@ export async function createCashMovementAction(
       return {
         ok: true,
         message:
-          input.kind === "income" ? "Ingreso registrado." : "Egreso registrado.",
+          input.kind === "income"
+            ? "Ingreso registrado."
+            : "Egreso registrado.",
       };
     });
 
@@ -105,7 +110,7 @@ export async function voidCashMovementAction(
   formData: FormData,
 ): Promise<ActionResult> {
   try {
-    const user = await requireLedgerAuthor("admin"); // soft-void is admin-only
+    const user = await requireRole("admin"); // soft-void is admin-only
     const parsed = voidReasonSchema.safeParse(formData.get("reason"));
     if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
 

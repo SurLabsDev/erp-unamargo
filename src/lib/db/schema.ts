@@ -129,6 +129,15 @@ export const products = pgTable(
     // tienen categoria en vez de inventarles una.
     categoryId: uuid("category_id").references(() => productCategories.id),
     subtypeId: uuid("subtype_id"),
+    // --- Contenido para la web del cliente ---------------------------------
+    // `price` es de EXHIBICION y nada mas: no alimenta el modulo Dinero, que
+    // registra movimientos de caja y no ventas por producto. Nullable porque un
+    // producto puede existir en el stock antes de tener precio publicado.
+    price: numeric("price", { precision: 12, scale: 2 }),
+    description: text("description"),
+    // Se genera del nombre al crear y NO cambia al renombrar: si cambiara, cada
+    // link publicado de ese producto se rompe (misma regla que las categorias).
+    slug: text("slug").unique(),
     lowStockAlertedAt: timestamp("low_stock_alerted_at", {
       withTimezone: true,
     }), // alert cycle state (PROMPT_ERP.md §8)

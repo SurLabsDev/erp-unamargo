@@ -12,10 +12,12 @@ import { parsePageParam } from "@/lib/params";
 import { getSettings } from "@/lib/settings";
 import { publicImageUrl, storageConfigured } from "@/lib/storage";
 import { DetailActions } from "./detail-actions";
+import { ProductContent } from "./product-content";
 import { ProductImages } from "./product-images";
 import { MovementsTable } from "../movements-table";
 import {
   getCatalogProduct,
+  listClassificationOptions,
   listMovements,
   listProductImages,
 } from "../queries";
@@ -38,9 +40,10 @@ export default async function ProductDetailPage(
   ]);
   if (!product) notFound();
 
-  const [movements, imagenes] = await Promise.all([
+  const [movements, imagenes, opciones] = await Promise.all([
     listMovements({ productId: id, page }, settings.timezone),
     listProductImages(id),
+    listClassificationOptions(),
   ]);
 
   return (
@@ -101,6 +104,18 @@ export default async function ProductDetailPage(
           </dd>
         </div>
       </dl>
+
+      <ProductContent
+        productId={product.id}
+        price={product.price}
+        description={product.description}
+        categoryId={product.categoryId}
+        subtypeId={product.subtypeId}
+        slug={product.slug}
+        currencyCode={settings.currencyCode}
+        opciones={opciones}
+        puedeEditar={user.role === "admin"}
+      />
 
       <ProductImages
         productId={product.id}

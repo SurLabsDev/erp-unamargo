@@ -13,24 +13,36 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ClassificationSelects } from "./classification-selects";
 import { createProductAction, updateProductAction } from "./actions";
-import type { CatalogRow } from "./queries";
+import type { CatalogRow, OpcionClasificacion } from "./queries";
 
 type State = { mode: "create" } | { mode: "edit"; product: CatalogRow } | null;
 
 export function ProductFormDialog(props: {
   state: State;
   onClose: () => void;
+  opciones?: OpcionClasificacion[];
 }) {
-  const { state, onClose } = props;
+  const { state, onClose, opciones = [] } = props;
   // Keyed by target so transient state (error/submitting) resets per product.
-  const formKey = state === null ? "closed" : state.mode === "edit" ? state.product.id : "create";
+  const formKey =
+    state === null
+      ? "closed"
+      : state.mode === "edit"
+        ? state.product.id
+        : "create";
 
   return (
     <Dialog open={state !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-md">
         {state !== null ? (
-          <ProductForm key={formKey} state={state} onClose={onClose} />
+          <ProductForm
+            key={formKey}
+            state={state}
+            onClose={onClose}
+            opciones={opciones}
+          />
         ) : null}
       </DialogContent>
     </Dialog>
@@ -40,8 +52,9 @@ export function ProductFormDialog(props: {
 function ProductForm(props: {
   state: NonNullable<State>;
   onClose: () => void;
+  opciones?: OpcionClasificacion[];
 }) {
-  const { state, onClose } = props;
+  const { state, onClose, opciones = [] } = props;
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -70,7 +83,9 @@ function ProductForm(props: {
   return (
     <>
       <DialogHeader>
-        <DialogTitle>{isEdit ? "Editar producto" : "Nuevo producto"}</DialogTitle>
+        <DialogTitle>
+          {isEdit ? "Editar producto" : "Nuevo producto"}
+        </DialogTitle>
         <DialogDescription>
           {isEdit
             ? "Cada variante cuenta como un SKU."
@@ -138,6 +153,12 @@ function ProductForm(props: {
             </div>
           ) : null}
         </div>
+        {/* La clasificacion se elige al crear. Para cambiarla despues esta la
+            ficha del producto, que ademas tiene precio y descripcion: dos
+            lugares que editan lo mismo se desincronizan solos. */}
+        {!isEdit ? (
+          <ClassificationSelects opciones={opciones} idPrefijo="nuevo" />
+        ) : null}
         {error ? (
           <p role="alert" className="text-sm text-destructive">
             {error}

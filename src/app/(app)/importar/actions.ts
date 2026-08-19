@@ -2,11 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { deliverAlerts } from "@/lib/alerts";
-import {
-  ForbiddenError,
-  requireLedgerAuthor,
-  requireRole,
-} from "@/lib/auth-helpers";
+import { ForbiddenError, requireRole } from "@/lib/auth-helpers";
 import { parseProductsCsv } from "@/lib/domain/import";
 import { executeImport, previewImport } from "@/lib/import-runner";
 
@@ -64,7 +60,9 @@ export async function previewImportAction(
     const parsed = parseProductsCsv(read.text);
     if (!parsed.ok) return { ok: false, error: parsed.fileError };
 
-    const { creatable, rejected: dbRejected } = await previewImport(parsed.rows);
+    const { creatable, rejected: dbRejected } = await previewImport(
+      parsed.rows,
+    );
     const rowsBySku = new Map(parsed.rows.map((row) => [`${row.line}`, row]));
 
     const rows: PreviewRow[] = [
@@ -106,7 +104,8 @@ export async function previewImportAction(
       rejectedCount: rows.length - creatable.length,
     };
   } catch (error) {
-    if (error instanceof ForbiddenError) return { ok: false, error: error.message };
+    if (error instanceof ForbiddenError)
+      return { ok: false, error: error.message };
     console.error("[importar:preview]", error);
     return { ok: false, error: "Ocurrió un error, intentá de nuevo." };
   }
@@ -116,7 +115,7 @@ export async function confirmImportAction(
   formData: FormData,
 ): Promise<ConfirmResult> {
   try {
-    const user = await requireLedgerAuthor("admin");
+    const user = await requireRole("admin");
     const read = await readCsvFile(formData);
     if (!read.ok) return read;
 
@@ -142,7 +141,8 @@ export async function confirmImportAction(
       rejected,
     };
   } catch (error) {
-    if (error instanceof ForbiddenError) return { ok: false, error: error.message };
+    if (error instanceof ForbiddenError)
+      return { ok: false, error: error.message };
     console.error("[importar:confirm]", error);
     return { ok: false, error: "Ocurrió un error, intentá de nuevo." };
   }

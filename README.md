@@ -12,7 +12,8 @@ Es una **base reutilizable**: una instancia (deploy en Vercel + base Postgres pr
 | **Dinero** | Ingresos/egresos por categoría, balance por período (saldo al inicio/cierre), anulación soft por admin, export CSV compatible con Excel es-UY |
 | **Alertas** | Un email por evento de quiebre (`stock ≤ mínimo`), rearme automático al reponer, auditoría en `alert_events`; `mínimo = 0` = sin control |
 | **Importación** | Carga inicial por CSV con plantilla oficial, preview fila por fila, solo crea (nunca actualiza) |
-| **API pública** | `GET /api/public/v1/stock` — stock disponible para la web del cliente, con cache CDN |
+| **Catálogo** | Categorías y subtipos administrables por el cliente (mate → de calabaza), precio, descripción y fotos por producto. Las fotos se achican en el navegador y viven en Supabase Storage |
+| **API pública** | `GET /api/public/v1/stock` — catálogo con stock, precio, clasificación y fotos para la web del cliente, con cache CDN |
 | **Usuarios** | Hasta 5 activos, roles administración / operación-consulta, contraseñas temporales mostradas una única vez |
 
 ## Stack
@@ -67,6 +68,8 @@ Credenciales demo (solo desarrollo; impresas también por el seed):
 | `APP_URL` | Sí | URL pública de la instancia (links en los emails de alerta) |
 | `RESEND_API_KEY` | No | API key de Resend. Sin ella, los emails se loguean a consola y los eventos quedan `skipped` — la app funciona igual |
 | `EMAIL_FROM` | Si hay Resend | Remitente, p. ej. `ERP Unamargo <erp@dominio-verificado.uy>`. El dominio DEBE estar verificado en Resend |
+| `SUPABASE_URL` | Si hay fotos | URL del proyecto Supabase. Sin ella la galería de fotos queda oculta y el resto funciona igual |
+| `SUPABASE_SECRET_KEY` | Si hay fotos | Project Settings → API Keys → la **secret** (`sb_secret_…`). Saltea RLS: va SOLO en el servidor, nunca con prefijo `NEXT_PUBLIC_`. Requiere un bucket `productos` público (ver `scripts/supabase-hardening.sql`) |
 
 Ver [.env.example](.env.example) comentado.
 
@@ -188,6 +191,6 @@ El seed imprime **una única vez** la contraseña temporal del admin inicial: gu
 
 ## Fuera de alcance (por contrato)
 
-Carrito, pedidos, ventas online o descuento automático de stock desde la web · conexión bancaria, conciliación, contabilidad, impuestos o facturación electrónica · múltiples depósitos, códigos de barras, compras, proveedores, logística, lotes/vencimientos/costos · multi-moneda · WhatsApp/SMS/chatbot · multi-tenancy · registro público de usuarios, recuperación de contraseña por email, 2FA · reportes/gráficos adicionales · modificación de la web del cliente (solo existe la API pública de stock).
+Carrito, pedidos, ventas online o **descuento automático de stock desde la web** (la web muestra disponibilidad; la salida se registra a mano en el ERP) · conexión bancaria, conciliación, contabilidad, impuestos o facturación electrónica · múltiples depósitos, códigos de barras, compras, proveedores, logística, lotes/vencimientos/costos · multi-moneda · WhatsApp/SMS/chatbot · multi-tenancy · construcción de la web del cliente (el ERP le da los datos por la API pública; el sitio es otro proyecto) · registro público de usuarios, recuperación de contraseña por email, 2FA · reportes/gráficos adicionales · modificación de la web del cliente (solo existe la API pública de stock).
 
 Las ideas que surjan se anotan en [BACKLOG.md](BACKLOG.md) y se cotizan aparte.

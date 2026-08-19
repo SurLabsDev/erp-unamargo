@@ -8,12 +8,8 @@ import {
   evaluateProductAlert,
   type PendingAlert,
 } from "@/lib/alerts";
-import {
-  ForbiddenError,
-  requireLedgerAuthor,
-  requireRole,
-} from "@/lib/auth-helpers";
-import { db } from "@/lib/db/client";
+import { ForbiddenError, requireRole } from "@/lib/auth-helpers";
+import { db, type Tx } from "@/lib/db/client";
 // Serializes operations that check the 150-active-SKU limit (create,
 // reactivate, import): a plain COUNT has a race between two admins.
 import { PRODUCT_LIMIT_LOCK } from "@/lib/db/locks";
@@ -22,7 +18,13 @@ import {
   storageConfigured,
   uploadProductImage,
 } from "@/lib/storage";
-import { productImages, products, stockMovements } from "@/lib/db/schema";
+import {
+  productImages,
+  productSubtypes,
+  products,
+  stockMovements,
+} from "@/lib/db/schema";
+import { slugify, uniqueSlug } from "@/lib/domain/slug";
 import {
   MAX_ACTIVE_PRODUCTS,
   computeAdjustmentDelta,
@@ -54,11 +56,62 @@ function revalidateStock(productId?: string) {
   revalidatePath("/");
 }
 
+/** Slug unico para la URL del producto en la web. Se calcula DENTRO de la
+ * transaccion del alta para que dos altas simultaneas no elijan el mismo. */
+async function slugParaProducto(tx: Tx, nombre: string): Promise<string> {
+  const usados = await tx.select({ slug: products.slug }).from(products);
+  const base = slugify(nombre) || "producto";
+  return uniqueSlug(
+    base,
+    new Set(usados.map((u) => u.slug).filter((x): x is string => x !== null)),
+  );
+}
+
+/** Clasificacion valida = subtipo perteneciente a la categoria elegida. La base
+ * lo garantiza con una foranea compuesta; esto existe solo para devolver un
+ * mensaje en español en vez de un error de constraint. */
+async function validarClasificacion(
+  tx: Tx,
+  categoryId: string | null,
+  subtypeId: string | null,
+): Promise<string | null> {
+  if (!subtypeId) return null;
+  if (!categoryId) return "Elegí la categoría antes que el subtipo.";
+  const [sub] = await tx
+    .select({ categoryId: productSubtypes.categoryId })
+    .from(productSubtypes)
+    .where(eq(productSubtypes.id, subtypeId))
+    .limit(1);
+  if (!sub) return "El subtipo no existe.";
+  if (sub.categoryId !== categoryId)
+    return "Ese subtipo no pertenece a la categoría elegida.";
+  return null;
+}
+
+const clasificacionSchema = z.object({
+  categoryId: z
+    .string()
+    .trim()
+    .transform((v) => (v === "" || v === "sin" ? null : v))
+    .nullable()
+    .refine((v) => v === null || z.uuid().safeParse(v).success, {
+      error: "Categoría inválida.",
+    }),
+  subtypeId: z
+    .string()
+    .trim()
+    .transform((v) => (v === "" || v === "sin" ? null : v))
+    .nullable()
+    .refine((v) => v === null || z.uuid().safeParse(v).success, {
+      error: "Subtipo inválido.",
+    }),
+});
+
 export async function createProductAction(
   formData: FormData,
 ): Promise<ActionResult> {
   try {
-    const user = await requireLedgerAuthor("admin");
+    const user = await requireRole("admin");
     const parsed = productCreateSchema.safeParse({
       sku: formData.get("sku"),
       name: formData.get("name"),
@@ -67,6 +120,12 @@ export async function createProductAction(
     });
     if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
     const { sku, name, minStock, initialStock } = parsed.data;
+
+    const clasif = clasificacionSchema.safeParse({
+      categoryId: formData.get("categoryId") ?? "",
+      subtypeId: formData.get("subtypeId") ?? "",
+    });
+    if (!clasif.success) return { ok: false, error: firstIssue(clasif.error) };
 
     let pendingAlert: PendingAlert | null = null;
     const result = await db.transaction(async (tx): Promise<ActionResult> => {
@@ -95,9 +154,24 @@ export async function createProductAction(
 
       // Initial stock enters the ledger as an 'initial' movement so the
       // invariant current_stock == Σ(delta) holds from day one.
+      const invalida = await validarClasificacion(
+        tx,
+        clasif.data.categoryId,
+        clasif.data.subtypeId,
+      );
+      if (invalida) return { ok: false, error: invalida };
+
       const [product] = await tx
         .insert(products)
-        .values({ sku, name, minStock, currentStock: initialStock })
+        .values({
+          sku,
+          name,
+          minStock,
+          currentStock: initialStock,
+          categoryId: clasif.data.categoryId,
+          subtypeId: clasif.data.subtypeId,
+          slug: await slugParaProducto(tx, name),
+        })
         .returning({ id: products.id });
       if (initialStock > 0) {
         await tx.insert(stockMovements).values({
@@ -251,7 +325,7 @@ export async function registerMovementAction(
   formData: FormData,
 ): Promise<ActionResult> {
   try {
-    const user = await requireLedgerAuthor(); // both roles register movements
+    const user = await requireRole(); // both roles register movements
     const noteRaw = formData.get("note");
     const parsed = movementInputSchema.safeParse({
       type: formData.get("type"),
@@ -507,6 +581,76 @@ export async function setPrimaryProductImageAction(
     revalidatePath(`/stock/${row.productId}`);
     revalidatePath("/stock");
     return { ok: true, message: "Foto principal actualizada." };
+  } catch (error) {
+    return handleError(error);
+  }
+}
+
+// --- Ficha del producto (contenido para la web) -----------------------------
+
+const fichaSchema = z.object({
+  price: z
+    .string()
+    .trim()
+    .transform((v) => v.replace(",", "."))
+    .refine((v) => v === "" || /^\d+(\.\d{1,2})?$/.test(v), {
+      error: "El precio admite hasta dos decimales.",
+    })
+    .transform((v) => (v === "" ? null : v)),
+  description: z
+    .string()
+    .trim()
+    .max(2000, { error: "La descripción admite hasta 2000 caracteres." })
+    .transform((v) => (v === "" ? null : v)),
+});
+
+/**
+ * Precio, descripción y clasificación: lo que consume la web del cliente.
+ * NO toca stock ni dinero. El precio es de exhibición: el módulo Dinero
+ * registra movimientos de caja, no ventas por producto.
+ */
+export async function updateProductContentAction(
+  productId: string,
+  formData: FormData,
+): Promise<ActionResult> {
+  try {
+    await requireRole("admin");
+    const parsed = fichaSchema.safeParse({
+      price: formData.get("price") ?? "",
+      description: formData.get("description") ?? "",
+    });
+    if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
+    const clasif = clasificacionSchema.safeParse({
+      categoryId: formData.get("categoryId") ?? "",
+      subtypeId: formData.get("subtypeId") ?? "",
+    });
+    if (!clasif.success) return { ok: false, error: firstIssue(clasif.error) };
+
+    const result = await db.transaction(async (tx): Promise<ActionResult> => {
+      const invalida = await validarClasificacion(
+        tx,
+        clasif.data.categoryId,
+        clasif.data.subtypeId,
+      );
+      if (invalida) return { ok: false, error: invalida };
+
+      const [updated] = await tx
+        .update(products)
+        .set({
+          price: parsed.data.price,
+          description: parsed.data.description,
+          categoryId: clasif.data.categoryId,
+          subtypeId: clasif.data.subtypeId,
+          updatedAt: new Date(),
+        })
+        .where(eq(products.id, productId))
+        .returning({ id: products.id });
+      if (!updated) return { ok: false, error: "El producto no existe." };
+      return { ok: true, message: "Ficha actualizada." };
+    });
+
+    if (result.ok) revalidateStock(productId);
+    return result;
   } catch (error) {
     return handleError(error);
   }

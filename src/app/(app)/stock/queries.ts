@@ -1,7 +1,10 @@
 import { and, asc, count, desc, eq, gte, lt, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
+import { SUPPORT_DISPLAY_NAME } from "@/lib/format";
 import {
+  productCategories,
   productImages,
+  productSubtypes,
   products,
   stockMovements,
   users,
@@ -25,6 +28,9 @@ export async function listCatalog(): Promise<CatalogRow[]> {
       minStock: products.minStock,
       categoryId: products.categoryId,
       subtypeId: products.subtypeId,
+      price: products.price,
+      description: products.description,
+      slug: products.slug,
       lowStockAlertedAt: products.lowStockAlertedAt,
       createdAt: products.createdAt,
       updatedAt: products.updatedAt,
@@ -49,6 +55,9 @@ export async function getCatalogProduct(
       minStock: products.minStock,
       categoryId: products.categoryId,
       subtypeId: products.subtypeId,
+      price: products.price,
+      description: products.description,
+      slug: products.slug,
       lowStockAlertedAt: products.lowStockAlertedAt,
       createdAt: products.createdAt,
       updatedAt: products.updatedAt,
@@ -120,7 +129,7 @@ export async function listMovements(
         productId: stockMovements.productId,
         productSku: products.sku,
         productName: products.name,
-        userName: users.name,
+        userName: sql<string>`case when ${users.isSupport} then ${SUPPORT_DISPLAY_NAME} else ${users.name} end`,
       })
       .from(stockMovements)
       .innerJoin(products, eq(stockMovements.productId, products.id))
@@ -145,9 +154,14 @@ export async function listMovementFilterOptions() {
       .select({ id: products.id, sku: products.sku, name: products.name })
       .from(products)
       .orderBy(asc(products.sku)),
+    // La cuenta de soporte no se ofrece como filtro: seria anunciarle al
+    // cliente que existe. Si llegara a firmar un movimiento, su nombre aparece
+    // en esa fila igual (decision explicita de Surlabs), pero no hace falta
+    // listarla ademas en el desplegable.
     db
       .select({ id: users.id, name: users.name })
       .from(users)
+      .where(eq(users.isSupport, false))
       .orderBy(asc(users.name)),
   ]);
   return { productOptions, userOptions };
@@ -182,7 +196,7 @@ export async function listRecentMovements(
       productId: stockMovements.productId,
       productSku: products.sku,
       productName: products.name,
-      userName: users.name,
+      userName: sql<string>`case when ${users.isSupport} then ${SUPPORT_DISPLAY_NAME} else ${users.name} end`,
     })
     .from(stockMovements)
     .innerJoin(products, eq(stockMovements.productId, products.id))
@@ -202,4 +216,41 @@ export async function listProductImages(productId: string) {
     .from(productImages)
     .where(eq(productImages.productId, productId))
     .orderBy(asc(productImages.sortOrder), asc(productImages.id));
+}
+
+export type OpcionClasificacion = {
+  id: string;
+  name: string;
+  subtypes: { id: string; name: string }[];
+};
+
+/** Categorias ACTIVAS con sus subtipos activos, para los selectores del alta y
+ * de la ficha. Las desactivadas no se ofrecen para clasificaciones nuevas, pero
+ * los productos que ya las tienen las conservan. */
+export async function listClassificationOptions(): Promise<
+  OpcionClasificacion[]
+> {
+  const [cats, subs] = await Promise.all([
+    db
+      .select({ id: productCategories.id, name: productCategories.name })
+      .from(productCategories)
+      .where(eq(productCategories.isActive, true))
+      .orderBy(asc(productCategories.sortOrder), asc(productCategories.name)),
+    db
+      .select({
+        id: productSubtypes.id,
+        categoryId: productSubtypes.categoryId,
+        name: productSubtypes.name,
+      })
+      .from(productSubtypes)
+      .where(eq(productSubtypes.isActive, true))
+      .orderBy(asc(productSubtypes.sortOrder), asc(productSubtypes.name)),
+  ]);
+  return cats.map((c) => ({
+    id: c.id,
+    name: c.name,
+    subtypes: subs
+      .filter((s) => s.categoryId === c.id)
+      .map((s) => ({ id: s.id, name: s.name })),
+  }));
 }

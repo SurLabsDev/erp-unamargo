@@ -46,7 +46,10 @@ export function formatDateTime(value: Date, timezone: string): string {
  * "Today" as YYYY-MM-DD computed in the INSTANCE timezone, never in server
  * UTC (PROMPT_ERP.md §2): at 21:00 in Montevideo, UTC is already tomorrow.
  */
-export function todayInTimeZone(timezone: string, now: Date = new Date()): string {
+export function todayInTimeZone(
+  timezone: string,
+  now: Date = new Date(),
+): string {
   // en-CA formats as YYYY-MM-DD.
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: timezone,
@@ -55,3 +58,14 @@ export function todayInTimeZone(timezone: string, now: Date = new Date()): strin
     day: "2-digit",
   }).format(now);
 }
+
+/**
+ * Con que nombre se muestra un movimiento firmado por la cuenta de soporte de
+ * Surlabs. La cuenta puede operar, pero no existe como usuario para el cliente:
+ * no esta en Configuracion, no cuenta en el tope de 5 y no aparece en los
+ * filtros. Mostrar su nombre real en el historial la delataria igual.
+ *
+ * El enmascarado se hace EN LA CONSULTA (un CASE en SQL), no en los
+ * componentes: asi una pantalla nueva no puede olvidarse de aplicarlo.
+ */
+export const SUPPORT_DISPLAY_NAME = "Sistema";

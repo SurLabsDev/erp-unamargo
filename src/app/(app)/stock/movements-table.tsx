@@ -74,7 +74,9 @@ export function MovementsTable(props: {
               <TableCell className="text-right tabular-nums">
                 {formatInteger(row.resultingStock)}
               </TableCell>
-              <TableCell className="whitespace-nowrap">{row.userName}</TableCell>
+              <TableCell className="whitespace-nowrap">
+                {row.userName}
+              </TableCell>
               <TableCell className="max-w-64 truncate text-muted-foreground">
                 {row.note}
               </TableCell>

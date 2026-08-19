@@ -1,6 +1,7 @@
 import { and, asc, count, desc, eq, gte, isNull, lte, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "@/lib/db/client";
+import { SUPPORT_DISPLAY_NAME } from "@/lib/format";
 import {
   cashCategories,
   cashMovements,
@@ -60,13 +61,16 @@ export async function listCashMovements(
         categoryName: cashCategories.name,
         concept: cashMovements.concept,
         amount: cashMovements.amount,
-        userName: users.name,
+        userName: sql<string>`case when ${users.isSupport} then ${SUPPORT_DISPLAY_NAME} else ${users.name} end`,
         voidedAt: cashMovements.voidedAt,
         voidedByName: voidedByUser.name,
         voidReason: cashMovements.voidReason,
       })
       .from(cashMovements)
-      .innerJoin(cashCategories, eq(cashMovements.categoryId, cashCategories.id))
+      .innerJoin(
+        cashCategories,
+        eq(cashMovements.categoryId, cashCategories.id),
+      )
       .innerJoin(users, eq(cashMovements.createdBy, users.id))
       .leftJoin(voidedByUser, eq(cashMovements.voidedBy, voidedByUser.id))
       .where(where)
@@ -173,7 +177,7 @@ export async function listCashForExport(
       categoryName: cashCategories.name,
       concept: cashMovements.concept,
       amount: cashMovements.amount,
-      userName: users.name,
+      userName: sql<string>`case when ${users.isSupport} then ${SUPPORT_DISPLAY_NAME} else ${users.name} end`,
       voidedAt: cashMovements.voidedAt,
       voidedByName: sql<string | null>`null`,
       voidReason: cashMovements.voidReason,

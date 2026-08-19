@@ -37,7 +37,7 @@ import { isLowStock } from "@/lib/domain/stock";
 import { MovementFormDialog } from "./movement-form-dialog";
 import { ProductActiveDialog } from "./product-active-dialog";
 import { ProductFormDialog } from "./product-form-dialog";
-import type { CatalogRow } from "./queries";
+import type { CatalogRow, OpcionClasificacion } from "./queries";
 
 const features = tableFeatures({
   rowSortingFeature,
@@ -48,11 +48,13 @@ const features = tableFeatures({
 const columnHelper = createColumnHelper<typeof features, CatalogRow>();
 
 type ProductDialogState =
-  | { mode: "create" }
-  | { mode: "edit"; product: CatalogRow }
-  | null;
+  { mode: "create" } | { mode: "edit"; product: CatalogRow } | null;
 
-export function StockCatalog(props: { rows: CatalogRow[]; isAdmin: boolean }) {
+export function StockCatalog(props: {
+  rows: CatalogRow[];
+  isAdmin: boolean;
+  opciones: OpcionClasificacion[];
+}) {
   const { rows, isAdmin } = props;
   const [search, setSearch] = useState("");
   const [showInactive, setShowInactive] = useState(false);
@@ -73,100 +75,107 @@ export function StockCatalog(props: { rows: CatalogRow[]; isAdmin: boolean }) {
   }, [rows, search, showInactive]);
 
   const columns = useMemo(
-    () => [
-      columnHelper.accessor("sku", {
-        header: "SKU",
-        cell: (ctx) => (
-          <Link
-            href={`/stock/${ctx.row.original.id}`}
-            className="font-mono text-xs font-medium underline-offset-4 hover:underline"
-          >
-            {ctx.row.original.sku}
-          </Link>
-        ),
-      }),
-      columnHelper.accessor("name", {
-        header: "Nombre",
-        cell: (ctx) => (
-          <span className={ctx.row.original.isActive ? "" : "text-muted-foreground"}>
-            {ctx.row.original.name}
-          </span>
-        ),
-      }),
-      columnHelper.accessor("currentStock", {
-        header: "Stock",
-        cell: (ctx) => (
-          <div className="flex items-center gap-2 tabular-nums">
-            {formatInteger(ctx.row.original.currentStock)}
-            {isLowStock(ctx.row.original) ? (
-              <Badge variant="destructive">Stock bajo</Badge>
-            ) : null}
-          </div>
-        ),
-      }),
-      columnHelper.accessor("minStock", {
-        header: "Mínimo",
-        cell: (ctx) => (
-          <span className="tabular-nums text-muted-foreground">
-            {ctx.row.original.minStock === 0
-              ? "Sin control"
-              : formatInteger(ctx.row.original.minStock)}
-          </span>
-        ),
-      }),
-      columnHelper.accessor("isActive", {
-        header: "Estado",
-        cell: (ctx) =>
-          ctx.row.original.isActive ? (
-            <Badge variant="outline">Activo</Badge>
-          ) : (
-            <Badge variant="secondary">Inactivo</Badge>
+    () =>
+      [
+        columnHelper.accessor("sku", {
+          header: "SKU",
+          cell: (ctx) => (
+            <Link
+              href={`/stock/${ctx.row.original.id}`}
+              className="font-mono text-xs font-medium underline-offset-4 hover:underline"
+            >
+              {ctx.row.original.sku}
+            </Link>
           ),
-      }),
-      columnHelper.display({
-        id: "actions",
-        header: "",
-        cell: (ctx) => {
-          const product = ctx.row.original;
-          return (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label="Acciones">
-                  <MoreHorizontal className="size-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem
-                  disabled={!product.isActive}
-                  onSelect={() => setMovementFor(product)}
-                >
-                  Registrar movimiento
-                </DropdownMenuItem>
-                {isAdmin ? (
-                  <>
-                    <DropdownMenuItem
-                      onSelect={() => setProductDialog({ mode: "edit", product })}
-                    >
-                      Editar
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      variant={product.isActive ? "destructive" : "default"}
-                      onSelect={() => setActiveConfirm(product)}
-                    >
-                      {product.isActive ? "Desactivar" : "Reactivar"}
-                    </DropdownMenuItem>
-                  </>
-                ) : null}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          );
-        },
-      }),
-      // The helper produces per-column TValue generics (string/number/boolean)
-      // that don't assign to ColumnDef<F, T, unknown>[] — standard TanStack
-      // variance wart; the cast is the documented workaround.
-    ] as ColumnDef<typeof features, CatalogRow>[],
+        }),
+        columnHelper.accessor("name", {
+          header: "Nombre",
+          cell: (ctx) => (
+            <span
+              className={
+                ctx.row.original.isActive ? "" : "text-muted-foreground"
+              }
+            >
+              {ctx.row.original.name}
+            </span>
+          ),
+        }),
+        columnHelper.accessor("currentStock", {
+          header: "Stock",
+          cell: (ctx) => (
+            <div className="flex items-center gap-2 tabular-nums">
+              {formatInteger(ctx.row.original.currentStock)}
+              {isLowStock(ctx.row.original) ? (
+                <Badge variant="destructive">Stock bajo</Badge>
+              ) : null}
+            </div>
+          ),
+        }),
+        columnHelper.accessor("minStock", {
+          header: "Mínimo",
+          cell: (ctx) => (
+            <span className="tabular-nums text-muted-foreground">
+              {ctx.row.original.minStock === 0
+                ? "Sin control"
+                : formatInteger(ctx.row.original.minStock)}
+            </span>
+          ),
+        }),
+        columnHelper.accessor("isActive", {
+          header: "Estado",
+          cell: (ctx) =>
+            ctx.row.original.isActive ? (
+              <Badge variant="outline">Activo</Badge>
+            ) : (
+              <Badge variant="secondary">Inactivo</Badge>
+            ),
+        }),
+        columnHelper.display({
+          id: "actions",
+          header: "",
+          cell: (ctx) => {
+            const product = ctx.row.original;
+            return (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" aria-label="Acciones">
+                    <MoreHorizontal className="size-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    disabled={!product.isActive}
+                    onSelect={() => setMovementFor(product)}
+                  >
+                    Registrar movimiento
+                  </DropdownMenuItem>
+                  {isAdmin ? (
+                    <>
+                      <DropdownMenuItem
+                        onSelect={() =>
+                          setProductDialog({ mode: "edit", product })
+                        }
+                      >
+                        Editar
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        variant={product.isActive ? "destructive" : "default"}
+                        onSelect={() => setActiveConfirm(product)}
+                      >
+                        {product.isActive ? "Desactivar" : "Reactivar"}
+                      </DropdownMenuItem>
+                    </>
+                  ) : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            );
+          },
+        }),
+        // The helper produces per-column TValue generics (string/number/boolean)
+        // that don't assign to ColumnDef<F, T, unknown>[] — standard TanStack
+        // variance wart; the cast is the documented workaround.
+      ] as ColumnDef<typeof features, CatalogRow>[],
     [isAdmin],
   );
 
@@ -215,7 +224,10 @@ export function StockCatalog(props: { rows: CatalogRow[]; isAdmin: boolean }) {
           <p className="text-sm font-medium">Todavía no hay productos.</p>
           {isAdmin ? (
             <div className="flex gap-2">
-              <Button size="sm" onClick={() => setProductDialog({ mode: "create" })}>
+              <Button
+                size="sm"
+                onClick={() => setProductDialog({ mode: "create" })}
+              >
                 Crear producto
               </Button>
               <Button size="sm" variant="outline" asChild>
@@ -230,7 +242,9 @@ export function StockCatalog(props: { rows: CatalogRow[]; isAdmin: boolean }) {
         </div>
       ) : data.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed px-6 py-16 text-center">
-          <p className="text-sm font-medium">Sin resultados para estos filtros.</p>
+          <p className="text-sm font-medium">
+            Sin resultados para estos filtros.
+          </p>
           <Button
             size="sm"
             variant="outline"
@@ -278,7 +292,10 @@ export function StockCatalog(props: { rows: CatalogRow[]; isAdmin: boolean }) {
                 <TableRow key={row.id}>
                   {row.getAllCells().map((cell) => (
                     <TableCell key={cell.id}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      {flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext(),
+                      )}
                     </TableCell>
                   ))}
                 </TableRow>
@@ -289,10 +306,12 @@ export function StockCatalog(props: { rows: CatalogRow[]; isAdmin: boolean }) {
       )}
 
       <p className="text-xs text-muted-foreground">
-        {formatInteger(rows.filter((r) => r.isActive).length)} de 150 SKU activos.
+        {formatInteger(rows.filter((r) => r.isActive).length)} de 150 SKU
+        activos.
       </p>
 
       <ProductFormDialog
+        opciones={props.opciones}
         state={productDialog}
         onClose={() => setProductDialog(null)}
       />
