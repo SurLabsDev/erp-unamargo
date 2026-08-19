@@ -231,6 +231,22 @@ describe("resolveDiscount", () => {
     ).toBeNull();
   });
 
+  it("un producto sin clasificar si recibe un descuento apuntado directamente a su id", () => {
+    const unclassified: ProductForDiscount = {
+      id: "p9",
+      price: "1000.00",
+      categoryId: null,
+      subtypeId: null,
+    };
+    const r = resolveDiscount(
+      unclassified,
+      [campaign("a", 25, { productIds: ["p9"] })],
+      TODAY,
+    );
+    expect(r?.percentage).toBe(25);
+    expect(r?.campaignId).toBe("a");
+  });
+
   it("devuelve el precio final ya calculado", () => {
     const r = resolveDiscount(
       product,
