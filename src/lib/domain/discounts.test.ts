@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   campaignState,
   discountedPrice,
+  resolveDiscount,
+  type CampaignWithTargets,
   type DiscountCampaign,
+  type ProductForDiscount,
 } from "./discounts";
 
 const base: DiscountCampaign = {
@@ -65,5 +68,139 @@ describe("discountedPrice", () => {
 
   it("precio con un solo decimal se normaliza a dos", () => {
     expect(discountedPrice("10.5", 10)).toBe("9.45");
+  });
+});
+
+const TODAY = "2026-08-12";
+
+function campaign(
+  id: string,
+  percentage: number,
+  targets: Partial<CampaignWithTargets["targets"]>,
+  extra: Partial<CampaignWithTargets> = {},
+): CampaignWithTargets {
+  return {
+    id,
+    name: `Campaign ${id}`,
+    percentage,
+    startsOn: "2026-08-10",
+    endsOn: "2026-08-16",
+    isActive: true,
+    targets: {
+      productIds: targets.productIds ?? [],
+      subtypeIds: targets.subtypeIds ?? [],
+      categoryIds: targets.categoryIds ?? [],
+    },
+    ...extra,
+  };
+}
+
+const product: ProductForDiscount = {
+  id: "p1",
+  price: "1000.00",
+  categoryId: "cat-mate",
+  subtypeId: "sub-calabaza",
+};
+
+describe("resolveDiscount", () => {
+  it("el producto le gana al subtipo y a la categoria", () => {
+    const r = resolveDiscount(
+      product,
+      [
+        campaign("cat", 50, { categoryIds: ["cat-mate"] }),
+        campaign("sub", 40, { subtypeIds: ["sub-calabaza"] }),
+        campaign("prod", 10, { productIds: ["p1"] }),
+      ],
+      TODAY,
+    );
+    expect(r?.percentage).toBe(10);
+    expect(r?.campaignId).toBe("prod");
+  });
+
+  it("el subtipo le gana a la categoria", () => {
+    const r = resolveDiscount(
+      product,
+      [
+        campaign("cat", 50, { categoryIds: ["cat-mate"] }),
+        campaign("sub", 40, { subtypeIds: ["sub-calabaza"] }),
+      ],
+      TODAY,
+    );
+    expect(r?.percentage).toBe(40);
+  });
+
+  it("a misma especificidad gana el porcentaje mayor", () => {
+    const r = resolveDiscount(
+      product,
+      [
+        campaign("a", 15, { categoryIds: ["cat-mate"] }),
+        campaign("b", 25, { categoryIds: ["cat-mate"] }),
+      ],
+      TODAY,
+    );
+    expect(r?.percentage).toBe(25);
+    expect(r?.campaignId).toBe("b");
+  });
+
+  it("una campana pausada no aplica aunque las fechas coincidan", () => {
+    const r = resolveDiscount(
+      product,
+      [campaign("a", 25, { categoryIds: ["cat-mate"] }, { isActive: false })],
+      TODAY,
+    );
+    expect(r).toBeNull();
+  });
+
+  it("una campana terminada no aplica", () => {
+    const r = resolveDiscount(
+      product,
+      [campaign("a", 25, { categoryIds: ["cat-mate"] })],
+      "2026-08-17",
+    );
+    expect(r).toBeNull();
+  });
+
+  it("una campana programada todavia no aplica", () => {
+    const r = resolveDiscount(
+      product,
+      [campaign("a", 25, { categoryIds: ["cat-mate"] })],
+      "2026-08-09",
+    );
+    expect(r).toBeNull();
+  });
+
+  it("un producto sin precio no recibe descuento en ningun nivel", () => {
+    const r = resolveDiscount(
+      { ...product, price: null },
+      [campaign("a", 25, { categoryIds: ["cat-mate"] })],
+      TODAY,
+    );
+    expect(r).toBeNull();
+  });
+
+  it("un producto sin clasificar solo recibe descuentos apuntados a el", () => {
+    const unclassified: ProductForDiscount = {
+      id: "p9",
+      price: "1000.00",
+      categoryId: null,
+      subtypeId: null,
+    };
+    expect(
+      resolveDiscount(
+        unclassified,
+        [campaign("a", 25, { categoryIds: ["cat-mate"] })],
+        TODAY,
+      ),
+    ).toBeNull();
+  });
+
+  it("devuelve el precio final ya calculado", () => {
+    const r = resolveDiscount(
+      product,
+      [campaign("a", 20, { categoryIds: ["cat-mate"] })],
+      TODAY,
+    );
+    expect(r?.priceFinal).toBe("800.00");
+    expect(r?.campaignName).toBe("Campaign a");
   });
 });

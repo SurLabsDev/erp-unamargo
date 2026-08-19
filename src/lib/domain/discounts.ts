@@ -54,3 +54,74 @@ function fromCents(cents: bigint): string {
   const fracPart = (cents % 100n).toString().padStart(2, "0");
   return `${intPart}.${fracPart}`;
 }
+
+export type CampaignTargets = {
+  productIds: string[];
+  subtypeIds: string[];
+  categoryIds: string[];
+};
+
+export type CampaignWithTargets = DiscountCampaign & {
+  targets: CampaignTargets;
+};
+
+export type ProductForDiscount = {
+  id: string;
+  price: string | null;
+  categoryId: string | null;
+  subtypeId: string | null;
+};
+
+export type AppliedDiscount = {
+  campaignId: string;
+  campaignName: string;
+  percentage: number;
+  priceFinal: string;
+};
+
+/**
+ * Winning campaign for a product: product > subtype > category.
+ *
+ * If a campaign directly targets a product, it wins and category campaigns are
+ * not even considered, even if they offer higher discounts. This enables saying
+ * "all mates 30%, but the imperial only 10%".
+ *
+ * At equal specificity, the higher percentage wins: precedence alone does not
+ * resolve the tie and a deterministic rule is needed.
+ */
+export function resolveDiscount(
+  product: ProductForDiscount,
+  campaigns: CampaignWithTargets[],
+  todayISO: string,
+): AppliedDiscount | null {
+  if (product.price === null) return null;
+
+  const active = campaigns.filter(
+    (c) => campaignState(c, todayISO) === "active",
+  );
+
+  const levels: Array<(c: CampaignWithTargets) => boolean> = [
+    (c) => c.targets.productIds.includes(product.id),
+    (c) =>
+      product.subtypeId !== null &&
+      c.targets.subtypeIds.includes(product.subtypeId),
+    (c) =>
+      product.categoryId !== null &&
+      c.targets.categoryIds.includes(product.categoryId),
+  ];
+
+  for (const matcher of levels) {
+    const candidates = active.filter(matcher);
+    if (candidates.length === 0) continue;
+    const winner = candidates.reduce((best, c) =>
+      c.percentage > best.percentage ? c : best,
+    );
+    return {
+      campaignId: winner.id,
+      campaignName: winner.name,
+      percentage: winner.percentage,
+      priceFinal: discountedPrice(product.price, winner.percentage),
+    };
+  }
+  return null;
+}
