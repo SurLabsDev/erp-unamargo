@@ -274,6 +274,7 @@ function campana(
 }
 
 const producto: ProductForDiscount = {
+  id: "p1",
   price: "1000.00",
   categoryId: "cat-mate",
   subtypeId: "sub-calabaza",
@@ -287,15 +288,11 @@ describe("resolveDiscount", () => {
         campana("cat", 50, { categoryIds: ["cat-mate"] }),
         campana("sub", 40, { subtypeIds: ["sub-calabaza"] }),
         campana("prod", 10, { productIds: ["p1"] }),
-      ].map((c) =>
-        c.id === "prod"
-          ? { ...c, targets: { ...c.targets, productIds: ["p1"] } }
-          : c,
-      ),
+      ],
       HOY,
     );
-    // el producto de prueba se identifica por id en el llamador, ver Step 3
     expect(r?.percentage).toBe(10);
+    expect(r?.campaignId).toBe("prod");
   });
 
   it("el subtipo le gana a la categoria", () => {
@@ -361,6 +358,7 @@ describe("resolveDiscount", () => {
 
   it("un producto sin clasificar solo recibe descuentos apuntados a el", () => {
     const sinClasificar: ProductForDiscount = {
+      id: "p9",
       price: "1000.00",
       categoryId: null,
       subtypeId: null,
@@ -385,12 +383,6 @@ describe("resolveDiscount", () => {
   });
 });
 ```
-
-> **Nota para el implementador:** el primer test necesita que el producto tenga
-> `id`. Al escribir la implementación en el Step 3, agregá `id: string` a
-> `ProductForDiscount` y corregí `producto` y `sinClasificar` para incluir
-> `id: "p1"`. Después simplificá el primer test a la forma de los demás
-> (tres campañas sin el `.map`).
 
 - [ ] **Step 2: Correr el test y ver que falla**
 
@@ -636,6 +628,8 @@ git commit -m "feat: discount campaigns and targets schema"
 - Produces:
   - `type CampaignListRow = { id: string; name: string; percentage: number; startsOn: string; endsOn: string; isActive: boolean; state: CampaignState; targetCount: number }`
   - `async function listCampaigns(todayISO: string): Promise<CampaignListRow[]>`
+  - `type TargetRow = { id: string; level: "product" | "subtype" | "category"; targetId: string; label: string }`
+  - `type CampaignDetail = CampaignListRow & { targets: TargetRow[] }`
   - `async function getCampaign(id: string): Promise<CampaignDetail | undefined>`
   - `async function listCampaignsWithTargets(): Promise<CampaignWithTargets[]>`
   - `async function countActiveCampaigns(todayISO: string): Promise<number>`
