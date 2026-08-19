@@ -1,10 +1,10 @@
-// Reglas de descuentos como funciones puras: sin base, testeables solas.
-// La aritmetica de plata va en centavos con BigInt, igual que el modulo Dinero
-// (ver DECISIONS.md): un float redondea mal y aca el resultado es un precio.
+// Discount rules as pure functions: no database, testable in isolation.
+// Money is handled in cents using BigInt, same as the money module
+// (see DECISIONS.md): float arithmetic rounds incorrectly and here the result is a price.
 
 export const MIN_PERCENTAGE = 1;
-/** Un dedo de mas convierte 10 en 100 y regala el catalogo. Para regalar algo
- * se pone precio 0 a mano, que es una decision visible. */
+/** One unit too much converts 10 into 100 and gives away the catalog. To give
+ * something away, the price is set to 0 manually, which is a visible decision. */
 export const MAX_PERCENTAGE = 90;
 
 export type CampaignState = "paused" | "scheduled" | "ended" | "active";
@@ -19,12 +19,12 @@ export type DiscountCampaign = {
 };
 
 /**
- * Estado derivado, nunca almacenado. Las condiciones se evaluan EN ORDEN y gana
- * la primera: una campana pausada y ademas vencida muestra un solo estado.
+ * Derived state, never stored. Conditions are evaluated IN ORDER and the first
+ * match wins: a paused campaign that is also expired shows only one state.
  *
- * `todayISO` viene de `todayInTimeZone(settings.timezone)`, nunca del UTC del
- * servidor: con Montevideo en UTC-3 una campana que termina "hoy" se apagaria
- * tres horas antes de tiempo.
+ * `todayISO` comes from `todayInTimeZone(settings.timezone)`, never from the
+ * server's UTC: with Montevideo in UTC-3, a campaign ending "today" would
+ * shut off three hours early.
  */
 export function campaignState(
   campaign: DiscountCampaign,
@@ -36,21 +36,21 @@ export function campaignState(
   return "active";
 }
 
-/** Precio con el descuento aplicado, como string decimal de dos decimales. */
+/** Price with discount applied, returned as a decimal string with two decimals. */
 export function discountedPrice(price: string, percentage: number): string {
-  const centavos = toCents(price);
-  // Redondeo medio-arriba: 14999.85 centavos de descuento van a 15000.
-  const descuento = (centavos * BigInt(percentage) * 2n + 100n) / 200n;
-  return fromCents(centavos - descuento);
+  const cents = toCents(price);
+  // Half-up rounding: 14999.85 cents of discount rounds to 15000.
+  const discount = (cents * BigInt(percentage) * 2n + 100n) / 200n;
+  return fromCents(cents - discount);
 }
 
 function toCents(price: string): bigint {
-  const [enteros, decimales = ""] = price.split(".");
-  return BigInt(enteros) * 100n + BigInt(decimales.padEnd(2, "0").slice(0, 2));
+  const [intPart, fracPart = ""] = price.split(".");
+  return BigInt(intPart) * 100n + BigInt(fracPart.padEnd(2, "0").slice(0, 2));
 }
 
-function fromCents(centavos: bigint): string {
-  const entero = centavos / 100n;
-  const resto = (centavos % 100n).toString().padStart(2, "0");
-  return `${entero}.${resto}`;
+function fromCents(cents: bigint): string {
+  const intPart = cents / 100n;
+  const fracPart = (cents % 100n).toString().padStart(2, "0");
+  return `${intPart}.${fracPart}`;
 }

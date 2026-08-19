@@ -39,9 +39,9 @@ describe("campaignState", () => {
   });
 
   it("una campana de un solo dia esta activa ese dia", () => {
-    const unDia = { ...base, startsOn: "2026-08-15", endsOn: "2026-08-15" };
-    expect(campaignState(unDia, "2026-08-15")).toBe("active");
-    expect(campaignState(unDia, "2026-08-16")).toBe("ended");
+    const oneDay = { ...base, startsOn: "2026-08-15", endsOn: "2026-08-15" };
+    expect(campaignState(oneDay, "2026-08-15")).toBe("active");
+    expect(campaignState(oneDay, "2026-08-16")).toBe("ended");
   });
 });
 
@@ -51,7 +51,7 @@ describe("discountedPrice", () => {
   });
 
   it("redondea medio-arriba al centavo", () => {
-    // 99999 * 15 / 100 = 14999.85 centavos -> 15000 -> 84999
+    // 99999 * 15 / 100 = 14999.85 cents -> 15000 -> 84999
     expect(discountedPrice("999.99", 15)).toBe("849.99");
   });
 
