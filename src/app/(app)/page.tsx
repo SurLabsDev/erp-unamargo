@@ -11,7 +11,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { requireUser } from "@/lib/auth-helpers";
-import { countActiveCampaigns } from "./descuentos/queries";
 import { computePeriodSummary, resolvePeriod } from "@/lib/domain/money";
 import { MOVEMENT_TYPE_LABELS } from "@/lib/domain/stock";
 import {
@@ -22,6 +21,7 @@ import {
   todayInTimeZone,
 } from "@/lib/format";
 import { getSettings } from "@/lib/settings";
+import { countActiveCampaigns } from "./descuentos/queries";
 import { periodTotals } from "./dinero/queries";
 import {
   listLowStockProducts,
