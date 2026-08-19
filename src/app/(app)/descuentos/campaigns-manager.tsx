@@ -77,7 +77,9 @@ export function CampaignsManager(props: { campaigns: CampaignListRow[] }) {
         <CardDescription>
           El estado se calcula solo a partir de las fechas y de si está
           pausada. Después de crear una campaña, entrá en ella para elegir a
-          qué productos, subtipos o categorías aplica.
+          qué productos, subtipos o categorías aplica. El nombre se muestra
+          en la web pública junto al precio con descuento, así que evitá
+          notas internas.
         </CardDescription>
       </CardHeader>
 
