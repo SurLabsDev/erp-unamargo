@@ -64,7 +64,9 @@ export async function listProductCatalog(): Promise<CategoryRow[]> {
         name: productCategories.name,
         slug: productCategories.slug,
         isActive: productCategories.isActive,
-        productCount: sql<number>`(select count(*)::int from products p where p.category_id = ${productCategories.id})`,
+        // Identifiers spelled out: interpolating drizzle columns inside a
+        // subquery renders them unqualified ("id" resolves to the wrong table).
+        productCount: sql<number>`(select count(*)::int from products p where p.category_id = product_categories.id)`,
       })
       .from(productCategories)
       .orderBy(asc(productCategories.sortOrder), asc(productCategories.name)),
@@ -75,7 +77,9 @@ export async function listProductCatalog(): Promise<CategoryRow[]> {
         name: productSubtypes.name,
         slug: productSubtypes.slug,
         isActive: productSubtypes.isActive,
-        productCount: sql<number>`(select count(*)::int from products p where p.subtype_id = ${productSubtypes.id})`,
+        // Identifiers spelled out: interpolating drizzle columns inside a
+        // subquery renders them unqualified ("id" resolves to the wrong table).
+        productCount: sql<number>`(select count(*)::int from products p where p.subtype_id = product_subtypes.id)`,
       })
       .from(productSubtypes)
       .orderBy(asc(productSubtypes.sortOrder), asc(productSubtypes.name)),
