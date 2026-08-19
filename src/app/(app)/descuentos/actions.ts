@@ -6,7 +6,13 @@ import { z } from "zod";
 import "@/lib/zod-locale";
 import { ForbiddenError, requireRole } from "@/lib/auth-helpers";
 import { db } from "@/lib/db/client";
-import { discountCampaigns, discountTargets } from "@/lib/db/schema";
+import {
+  discountCampaigns,
+  discountTargets,
+  productCategories,
+  products,
+  productSubtypes,
+} from "@/lib/db/schema";
 import { isValidISODate } from "@/lib/domain/dates";
 import { MAX_PERCENTAGE, MIN_PERCENTAGE } from "@/lib/domain/discounts";
 
@@ -155,6 +161,22 @@ const targetColumns = {
   category: discountTargets.categoryId,
 };
 
+// Table + not-found message per level, so `addTargetAction` can confirm the
+// referenced row exists before insert and fail with a specific message
+// instead of letting the foreign key reject it (same shape as
+// `createProductSubtypeAction` checking `productCategories` before insert).
+const targetTables = {
+  product: products,
+  subtype: productSubtypes,
+  category: productCategories,
+};
+
+const targetNotFoundMessages: Record<TargetLevel, string> = {
+  product: "El producto no existe.",
+  subtype: "El subtipo no existe.",
+  category: "La categoría no existe.",
+};
+
 function nonEmpty(value: FormDataEntryValue | null): string | null {
   return typeof value === "string" && value.trim() !== "" ? value : null;
 }
@@ -206,6 +228,15 @@ export async function addTargetAction(
       .where(eq(discountCampaigns.id, campaignId))
       .limit(1);
     if (!campaign) return { ok: false, error: "La campaña no existe." };
+
+    const [target] = await db
+      .select({ id: targetTables[level].id })
+      .from(targetTables[level])
+      .where(eq(targetTables[level].id, targetId))
+      .limit(1);
+    if (!target) {
+      return { ok: false, error: targetNotFoundMessages[level] };
+    }
 
     const [duplicate] = await db
       .select({ id: discountTargets.id })
