@@ -38,7 +38,18 @@ export function campaignState(
   return "active";
 }
 
-/** Price with discount applied, returned as a decimal string with two decimals. */
+/**
+ * Price with discount applied, returned as a decimal string with two decimals.
+ *
+ * Precondition: `percentage` is an integer within `MIN_PERCENTAGE`..
+ * `MAX_PERCENTAGE`. Not re-checked here: the Zod schema on the campaign
+ * actions and the `CHECK` constraint on `discount_campaigns.percentage`
+ * already enforce it on every write path, the same way `stock.ts` and
+ * `limits.ts` trust their own bounded values (e.g. `MAX_ACTIVE_PRODUCTS`,
+ * `MAX_ACTIVE_USERS`) without re-validating them in the pure functions that
+ * consume them. A non-integer percentage still fails loudly on its own:
+ * `BigInt(percentage)` below throws a `RangeError`.
+ */
 export function discountedPrice(price: string, percentage: number): string {
   const cents = toCents(price);
   // Half-up rounding: 14999.85 cents of discount rounds to 15000.
