@@ -217,10 +217,10 @@ export function TargetsManager(props: {
                       <Button
                         variant="ghost"
                         size="sm"
-                        disabled={removingId === target.id}
+                        disabled={removingId !== null}
                         onClick={() => void handleRemove(target)}
                       >
-                        Quitar
+                        {removingId === target.id ? "Quitando…" : "Quitar"}
                       </Button>
                     </TableCell>
                   </TableRow>
