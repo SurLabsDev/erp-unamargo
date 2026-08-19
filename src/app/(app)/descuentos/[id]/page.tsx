@@ -9,6 +9,7 @@ import { requireAdminPage } from "@/lib/auth-helpers";
 import type { CampaignState } from "@/lib/domain/discounts";
 import { formatDate } from "@/lib/format";
 import { getCampaign } from "../queries";
+import { CampaignEditForm } from "./campaign-edit-form";
 import { TargetsManager } from "./targets-manager";
 
 export const metadata: Metadata = { title: "Campaña" };
@@ -60,6 +61,14 @@ export default async function CampaignDetailPage(
           </Badge>
         </div>
       </div>
+
+      <CampaignEditForm
+        campaignId={campaign.id}
+        name={campaign.name}
+        percentage={campaign.percentage}
+        startsOn={campaign.startsOn}
+        endsOn={campaign.endsOn}
+      />
 
       <TargetsManager
         campaignId={campaign.id}
