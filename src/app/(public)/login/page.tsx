@@ -1,5 +1,6 @@
 import { Lock } from "lucide-react";
 import type { Metadata } from "next";
+import { Logo } from "@/components/brand/logo";
 import { LoginForm } from "./login-form";
 
 export const metadata: Metadata = { title: "Iniciar sesión" };
@@ -16,9 +17,7 @@ export default function LoginPage() {
     <div className="dark flex min-h-dvh flex-col bg-background text-foreground">
       <header className="border-b border-border">
         <div className="mx-auto flex h-16 w-full max-w-5xl items-center px-6">
-          <span className="text-base font-semibold tracking-tight lowercase">
-            surlabs
-          </span>
+          <Logo />
           <span className="ml-3 font-mono text-xs tracking-[0.18em] text-muted-foreground uppercase">
             ERP
           </span>

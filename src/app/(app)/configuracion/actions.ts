@@ -9,7 +9,14 @@ import "@/lib/zod-locale";
 import { ForbiddenError, requireRole } from "@/lib/auth-helpers";
 import { db, type Tx } from "@/lib/db/client";
 import { BALANCE_LOCK, USER_LIMIT_LOCK } from "@/lib/db/locks";
-import { cashCategories, cashMovements, settings, users } from "@/lib/db/schema";
+import {
+  cashCategories,
+  cashMovements,
+  productCategories,
+  productSubtypes,
+  settings,
+  users,
+} from "@/lib/db/schema";
 import { isValidISODate } from "@/lib/domain/dates";
 import {
   USER_LIMIT_ERROR,
@@ -17,6 +24,7 @@ import {
   canActivateUser,
 } from "@/lib/domain/limits";
 import { categoryNameSchema, passwordSchema } from "@/lib/domain/money";
+import { slugify, uniqueSlug } from "@/lib/domain/slug";
 import { todayInTimeZone } from "@/lib/format";
 import { getSettings } from "@/lib/settings";
 
@@ -29,7 +37,8 @@ function firstIssue(error: z.ZodError): string {
 }
 
 function handleError(error: unknown): ActionResult {
-  if (error instanceof ForbiddenError) return { ok: false, error: error.message };
+  if (error instanceof ForbiddenError)
+    return { ok: false, error: error.message };
   console.error("[configuracion:action]", error);
   return { ok: false, error: "Ocurrió un error, intentá de nuevo." };
 }
@@ -37,6 +46,12 @@ function handleError(error: unknown): ActionResult {
 function revalidateConfig() {
   revalidatePath("/configuracion");
   revalidatePath("/dinero");
+  revalidatePath("/");
+}
+
+function revalidateCatalog() {
+  revalidatePath("/configuracion");
+  revalidatePath("/stock");
   revalidatePath("/");
 }
 
@@ -132,7 +147,9 @@ export async function updateAlertRecipientsAction(
       formData.get("recipient2"),
       formData.get("recipient3"),
     ]
-      .map((value) => (typeof value === "string" ? value.trim().toLowerCase() : ""))
+      .map((value) =>
+        typeof value === "string" ? value.trim().toLowerCase() : "",
+      )
       .filter((value) => value !== "");
     const parsed = alertRecipientsSchema.safeParse(raw);
     if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
@@ -194,7 +211,10 @@ export async function renameCategoryAction(
       .select({ id: cashCategories.id })
       .from(cashCategories)
       .where(
-        and(eq(cashCategories.name, parsed.data), ne(cashCategories.id, categoryId)),
+        and(
+          eq(cashCategories.name, parsed.data),
+          ne(cashCategories.id, categoryId),
+        ),
       )
       .limit(1);
     if (duplicate) {
@@ -312,7 +332,10 @@ export async function createUserAction(
         .where(eq(users.email, email))
         .limit(1);
       if (existing) {
-        return { ok: false, error: `Ya existe un usuario con el email ${email}.` };
+        return {
+          ok: false,
+          error: `Ya existe un usuario con el email ${email}.`,
+        };
       }
       await tx.insert(users).values({ email, name, role, passwordHash });
       return {
@@ -395,7 +418,10 @@ export async function setUserActiveAction(
         }
       }
 
-      await tx.update(users).set({ isActive: active }).where(eq(users.id, userId));
+      await tx
+        .update(users)
+        .set({ isActive: active })
+        .where(eq(users.id, userId));
       return {
         ok: true,
         message: active
@@ -477,11 +503,274 @@ export async function changeOwnPasswordAction(
     if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
 
     const valid = await bcrypt.compare(parsed.data.current, user.passwordHash);
-    if (!valid) return { ok: false, error: "La contraseña actual es incorrecta." };
+    if (!valid)
+      return { ok: false, error: "La contraseña actual es incorrecta." };
 
     const passwordHash = await bcrypt.hash(parsed.data.next, 12);
     await db.update(users).set({ passwordHash }).where(eq(users.id, user.id));
     return { ok: true, message: "Contraseña actualizada." };
+  } catch (error) {
+    return handleError(error);
+  }
+}
+
+// --- Catalogo: categorias y subtipos de producto ----------------------------
+//
+// Listas cerradas: el cliente las administra desde aca y despues las elige de
+// un selector al cargar un producto. Nunca texto libre.
+//
+// Como las categorias de dinero, NO se borran nunca: se desactivan. Un producto
+// ya clasificado conserva su categoria; desactivar solo la saca de las opciones
+// para clasificaciones nuevas.
+
+/** El nombre tiene que dejar algo utilizable como URL. */
+const catalogNameSchema = z
+  .string({ error: "El nombre es obligatorio." })
+  .trim()
+  .min(1, { error: "El nombre es obligatorio." })
+  .max(60, { error: "El nombre admite hasta 60 caracteres." })
+  .refine((value) => slugify(value).length > 0, {
+    error: "El nombre tiene que tener al menos una letra o un número.",
+  });
+
+export async function createProductCategoryAction(
+  formData: FormData,
+): Promise<ActionResult> {
+  try {
+    await requireRole("admin");
+    const parsed = catalogNameSchema.safeParse(formData.get("name"));
+    if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
+    const name = parsed.data;
+
+    const [dup] = await db
+      .select({ id: productCategories.id })
+      .from(productCategories)
+      .where(eq(productCategories.name, name))
+      .limit(1);
+    if (dup)
+      return { ok: false, error: "Ya existe una categoría con ese nombre." };
+
+    const usados = await db
+      .select({ slug: productCategories.slug })
+      .from(productCategories);
+    const [{ siguiente }] = await db
+      .select({
+        siguiente: sql<number>`coalesce(max(${productCategories.sortOrder}), 0) + 1`,
+      })
+      .from(productCategories);
+
+    await db.insert(productCategories).values({
+      name,
+      slug: uniqueSlug(slugify(name), new Set(usados.map((u) => u.slug))),
+      sortOrder: siguiente,
+    });
+    revalidateCatalog();
+    return { ok: true, message: `Categoría "${name}" creada.` };
+  } catch (error) {
+    return handleError(error);
+  }
+}
+
+/** Renombrar cambia la etiqueta, NUNCA el slug: cambiarlo rompe los links ya
+ * publicados de la web del cliente. */
+export async function renameProductCategoryAction(
+  categoryId: string,
+  formData: FormData,
+): Promise<ActionResult> {
+  try {
+    await requireRole("admin");
+    const parsed = catalogNameSchema.safeParse(formData.get("name"));
+    if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
+
+    const [dup] = await db
+      .select({ id: productCategories.id })
+      .from(productCategories)
+      .where(
+        and(
+          eq(productCategories.name, parsed.data),
+          ne(productCategories.id, categoryId),
+        ),
+      )
+      .limit(1);
+    if (dup)
+      return { ok: false, error: "Ya existe una categoría con ese nombre." };
+
+    const [updated] = await db
+      .update(productCategories)
+      .set({ name: parsed.data })
+      .where(eq(productCategories.id, categoryId))
+      .returning({ id: productCategories.id });
+    if (!updated) return { ok: false, error: "La categoría no existe." };
+
+    revalidateCatalog();
+    return {
+      ok: true,
+      message: "Categoría renombrada. La dirección web no cambia.",
+    };
+  } catch (error) {
+    return handleError(error);
+  }
+}
+
+export async function setProductCategoryActiveAction(
+  categoryId: string,
+  active: boolean,
+): Promise<ActionResult> {
+  try {
+    await requireRole("admin");
+    const [updated] = await db
+      .update(productCategories)
+      .set({ isActive: active })
+      .where(eq(productCategories.id, categoryId))
+      .returning({ name: productCategories.name });
+    if (!updated) return { ok: false, error: "La categoría no existe." };
+
+    revalidateCatalog();
+    return {
+      ok: true,
+      message: active
+        ? `Categoría "${updated.name}" reactivada.`
+        : `Categoría "${updated.name}" desactivada. Los productos ya clasificados la conservan.`,
+    };
+  } catch (error) {
+    return handleError(error);
+  }
+}
+
+export async function createProductSubtypeAction(
+  formData: FormData,
+): Promise<ActionResult> {
+  try {
+    await requireRole("admin");
+    const parsed = z
+      .object({
+        categoryId: z.uuid({ error: "Elegí una categoría." }),
+        name: catalogNameSchema,
+      })
+      .safeParse({
+        categoryId: formData.get("categoryId"),
+        name: formData.get("name"),
+      });
+    if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
+    const { categoryId, name } = parsed.data;
+
+    const [category] = await db
+      .select({ id: productCategories.id })
+      .from(productCategories)
+      .where(eq(productCategories.id, categoryId))
+      .limit(1);
+    if (!category) return { ok: false, error: "La categoría no existe." };
+
+    // Unico POR CATEGORIA: "De metal" puede existir bajo Mate y bajo Bombilla.
+    const [dup] = await db
+      .select({ id: productSubtypes.id })
+      .from(productSubtypes)
+      .where(
+        and(
+          eq(productSubtypes.categoryId, categoryId),
+          eq(productSubtypes.name, name),
+        ),
+      )
+      .limit(1);
+    if (dup) {
+      return {
+        ok: false,
+        error: "Esa categoría ya tiene un subtipo con ese nombre.",
+      };
+    }
+
+    const usados = await db
+      .select({ slug: productSubtypes.slug })
+      .from(productSubtypes)
+      .where(eq(productSubtypes.categoryId, categoryId));
+    const [{ siguiente }] = await db
+      .select({
+        siguiente: sql<number>`coalesce(max(${productSubtypes.sortOrder}), 0) + 1`,
+      })
+      .from(productSubtypes)
+      .where(eq(productSubtypes.categoryId, categoryId));
+
+    await db.insert(productSubtypes).values({
+      categoryId,
+      name,
+      slug: uniqueSlug(slugify(name), new Set(usados.map((u) => u.slug))),
+      sortOrder: siguiente,
+    });
+    revalidateCatalog();
+    return { ok: true, message: `Subtipo "${name}" creado.` };
+  } catch (error) {
+    return handleError(error);
+  }
+}
+
+export async function renameProductSubtypeAction(
+  subtypeId: string,
+  formData: FormData,
+): Promise<ActionResult> {
+  try {
+    await requireRole("admin");
+    const parsed = catalogNameSchema.safeParse(formData.get("name"));
+    if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
+
+    const [target] = await db
+      .select({ categoryId: productSubtypes.categoryId })
+      .from(productSubtypes)
+      .where(eq(productSubtypes.id, subtypeId))
+      .limit(1);
+    if (!target) return { ok: false, error: "El subtipo no existe." };
+
+    const [dup] = await db
+      .select({ id: productSubtypes.id })
+      .from(productSubtypes)
+      .where(
+        and(
+          eq(productSubtypes.categoryId, target.categoryId),
+          eq(productSubtypes.name, parsed.data),
+          ne(productSubtypes.id, subtypeId),
+        ),
+      )
+      .limit(1);
+    if (dup) {
+      return {
+        ok: false,
+        error: "Esa categoría ya tiene un subtipo con ese nombre.",
+      };
+    }
+
+    await db
+      .update(productSubtypes)
+      .set({ name: parsed.data })
+      .where(eq(productSubtypes.id, subtypeId));
+    revalidateCatalog();
+    return {
+      ok: true,
+      message: "Subtipo renombrado. La dirección web no cambia.",
+    };
+  } catch (error) {
+    return handleError(error);
+  }
+}
+
+export async function setProductSubtypeActiveAction(
+  subtypeId: string,
+  active: boolean,
+): Promise<ActionResult> {
+  try {
+    await requireRole("admin");
+    const [updated] = await db
+      .update(productSubtypes)
+      .set({ isActive: active })
+      .where(eq(productSubtypes.id, subtypeId))
+      .returning({ name: productSubtypes.name });
+    if (!updated) return { ok: false, error: "El subtipo no existe." };
+
+    revalidateCatalog();
+    return {
+      ok: true,
+      message: active
+        ? `Subtipo "${updated.name}" reactivado.`
+        : `Subtipo "${updated.name}" desactivado. Los productos ya clasificados lo conservan.`,
+    };
   } catch (error) {
     return handleError(error);
   }

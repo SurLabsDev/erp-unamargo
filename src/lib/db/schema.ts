@@ -4,6 +4,7 @@ import {
   boolean,
   check,
   date,
+  foreignKey,
   index,
   integer,
   numeric,
@@ -11,6 +12,7 @@ import {
   smallint,
   text,
   timestamp,
+  unique,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -73,6 +75,45 @@ export const settings = pgTable(
   ],
 );
 
+// --- Taxonomia del catalogo -------------------------------------------------
+// Dos niveles: categoria (que es) -> subtipo (de que variante). Los subtipos
+// CUELGAN de una categoria: "De metal" existe una vez bajo Bombilla y otra
+// bajo Mate, y eso es correcto, porque el cliente los elige de un selector ya
+// filtrado por la categoria y nunca ve la ambiguedad.
+//
+// Ambas son listas cerradas que administra un admin desde Configuracion, igual
+// que cash_categories. Nunca texto libre.
+
+export const productCategories = pgTable("product_categories", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull().unique(), // "Mate"
+  slug: text("slug").notNull().unique(), // "mate" -> URL de la web del cliente
+  sortOrder: integer("sort_order").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+});
+
+export const productSubtypes = pgTable(
+  "product_subtypes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    categoryId: uuid("category_id")
+      .notNull()
+      .references(() => productCategories.id),
+    name: text("name").notNull(), // "De calabaza"
+    slug: text("slug").notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    isActive: boolean("is_active").notNull().default(true),
+  },
+  (t) => [
+    // Unicos POR CATEGORIA, no globales: "De metal" tiene que poder existir
+    // bajo Bombilla y bajo Mate al mismo tiempo.
+    unique("product_subtypes_category_name_key").on(t.categoryId, t.name),
+    unique("product_subtypes_category_slug_key").on(t.categoryId, t.slug),
+    // Sirve de destino a la clave foranea compuesta de products (ver abajo).
+    unique("product_subtypes_id_category_key").on(t.id, t.categoryId),
+  ],
+);
+
 export const products = pgTable(
   "products",
   {
@@ -82,6 +123,12 @@ export const products = pgTable(
     isActive: boolean("is_active").notNull().default(true),
     currentStock: integer("current_stock").notNull().default(0),
     minStock: integer("min_stock").notNull().default(0), // 0 = alerts disabled
+    // Nullable a proposito: la importacion por CSV solo trae
+    // sku/nombre/stock/minimo, asi que un producto importado nace sin
+    // clasificar. La UI del ERP empuja a completarlo; la web filtra los que no
+    // tienen categoria en vez de inventarles una.
+    categoryId: uuid("category_id").references(() => productCategories.id),
+    subtypeId: uuid("subtype_id"),
     lowStockAlertedAt: timestamp("low_stock_alerted_at", {
       withTimezone: true,
     }), // alert cycle state (PROMPT_ERP.md §8)
@@ -95,6 +142,17 @@ export const products = pgTable(
   (t) => [
     check("products_current_stock_check", sql`${t.currentStock} >= 0`),
     check("products_min_stock_check", sql`${t.minStock} >= 0`),
+    // El subtipo TIENE que pertenecer a la categoria del producto, y eso lo
+    // garantiza la base, no la app: sin esto, una request armada a mano podria
+    // ponerle "De calabaza" (subtipo de Mate) a una bombilla, y el filtro de la
+    // web mostraria un disparate. Con MATCH SIMPLE, si subtype_id es NULL la
+    // restriccion no se evalua, que es justo lo que queremos porque el subtipo
+    // es opcional.
+    foreignKey({
+      columns: [t.subtypeId, t.categoryId],
+      foreignColumns: [productSubtypes.id, productSubtypes.categoryId],
+      name: "products_subtype_belongs_to_category_fk",
+    }),
   ],
 );
 
@@ -220,6 +278,8 @@ export const alertEvents = pgTable(
 
 export type User = typeof users.$inferSelect;
 export type Settings = typeof settings.$inferSelect;
+export type ProductCategory = typeof productCategories.$inferSelect;
+export type ProductSubtype = typeof productSubtypes.$inferSelect;
 export type Product = typeof products.$inferSelect;
 export type StockMovement = typeof stockMovements.$inferSelect;
 export type CashCategory = typeof cashCategories.$inferSelect;

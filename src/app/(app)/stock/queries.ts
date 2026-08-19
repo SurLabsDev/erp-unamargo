@@ -1,11 +1,6 @@
 import { and, asc, count, desc, eq, gte, lt, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import {
-  products,
-  stockMovements,
-  users,
-  type Product,
-} from "@/lib/db/schema";
+import { products, stockMovements, users, type Product } from "@/lib/db/schema";
 import { zonedDateRangeToUtc } from "@/lib/domain/dates";
 
 export const MOVEMENTS_PAGE_SIZE = 50;
@@ -22,6 +17,8 @@ export async function listCatalog(): Promise<CatalogRow[]> {
       isActive: products.isActive,
       currentStock: products.currentStock,
       minStock: products.minStock,
+      categoryId: products.categoryId,
+      subtypeId: products.subtypeId,
       lowStockAlertedAt: products.lowStockAlertedAt,
       createdAt: products.createdAt,
       updatedAt: products.updatedAt,
@@ -44,6 +41,8 @@ export async function getCatalogProduct(
       isActive: products.isActive,
       currentStock: products.currentStock,
       minStock: products.minStock,
+      categoryId: products.categoryId,
+      subtypeId: products.subtypeId,
       lowStockAlertedAt: products.lowStockAlertedAt,
       createdAt: products.createdAt,
       updatedAt: products.updatedAt,
@@ -90,7 +89,9 @@ export async function listMovements(
     timezone,
   );
   const conditions = [
-    filters.productId ? eq(stockMovements.productId, filters.productId) : undefined,
+    filters.productId
+      ? eq(stockMovements.productId, filters.productId)
+      : undefined,
     filters.type ? eq(stockMovements.type, filters.type) : undefined,
     filters.userId ? eq(stockMovements.createdBy, filters.userId) : undefined,
     from ? gte(stockMovements.createdAt, from) : undefined,
@@ -122,10 +123,7 @@ export async function listMovements(
       .orderBy(desc(stockMovements.createdAt), desc(stockMovements.id))
       .limit(MOVEMENTS_PAGE_SIZE)
       .offset((page - 1) * MOVEMENTS_PAGE_SIZE),
-    db
-      .select({ total: count() })
-      .from(stockMovements)
-      .where(where),
+    db.select({ total: count() }).from(stockMovements).where(where),
   ]);
 
   return {
@@ -164,7 +162,9 @@ export async function listLowStockProducts(): Promise<Product[]> {
     .orderBy(asc(products.sku));
 }
 
-export async function listRecentMovements(limit: number): Promise<MovementRow[]> {
+export async function listRecentMovements(
+  limit: number,
+): Promise<MovementRow[]> {
   return db
     .select({
       id: stockMovements.id,
