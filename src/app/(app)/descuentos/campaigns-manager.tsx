@@ -25,18 +25,11 @@ import {
 import {
   MAX_PERCENTAGE,
   MIN_PERCENTAGE,
-  type CampaignState,
+  STATE_LABELS,
 } from "@/lib/domain/discounts";
 import { formatDate } from "@/lib/format";
 import { createCampaignAction, setCampaignActiveAction } from "./actions";
 import type { CampaignListRow } from "./queries";
-
-const STATE_LABELS: Record<CampaignState, string> = {
-  active: "Activa",
-  scheduled: "Programada",
-  ended: "Terminada",
-  paused: "Pausada",
-};
 
 export function CampaignsManager(props: { campaigns: CampaignListRow[] }) {
   const { campaigns } = props;
@@ -77,9 +70,8 @@ export function CampaignsManager(props: { campaigns: CampaignListRow[] }) {
         <CardDescription>
           El estado se calcula solo a partir de las fechas y de si está
           pausada. Después de crear una campaña, entrá en ella para elegir a
-          qué productos, subtipos o categorías aplica. El nombre se muestra
-          en la web pública junto al precio con descuento, así que evitá
-          notas internas.
+          qué alcanza. El nombre se muestra en la web pública junto al
+          precio con descuento, así que evitá notas internas.
         </CardDescription>
       </CardHeader>
 

@@ -11,6 +11,15 @@ export const MAX_PERCENTAGE = 90;
 
 export type CampaignState = "paused" | "scheduled" | "ended" | "active";
 
+// Co-located with the type it labels, same convention as
+// MOVEMENT_TYPE_LABELS in stock.ts and CASH_KIND_LABELS in money.ts.
+export const STATE_LABELS: Record<CampaignState, string> = {
+  active: "Activa",
+  scheduled: "Programada",
+  ended: "Terminada",
+  paused: "Pausada",
+};
+
 export type DiscountCampaign = {
   id: string;
   name: string;

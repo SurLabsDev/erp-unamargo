@@ -6,20 +6,13 @@ import { z } from "zod";
 import { listCatalog, listClassificationOptions } from "@/app/(app)/stock/queries";
 import { Badge } from "@/components/ui/badge";
 import { requireAdminPage } from "@/lib/auth-helpers";
-import type { CampaignState } from "@/lib/domain/discounts";
+import { STATE_LABELS } from "@/lib/domain/discounts";
 import { formatDate } from "@/lib/format";
 import { getCampaign } from "../queries";
 import { CampaignEditForm } from "./campaign-edit-form";
 import { TargetsManager } from "./targets-manager";
 
 export const metadata: Metadata = { title: "Campaña" };
-
-const STATE_LABELS: Record<CampaignState, string> = {
-  active: "Activa",
-  scheduled: "Programada",
-  ended: "Terminada",
-  paused: "Pausada",
-};
 
 export default async function CampaignDetailPage(
   props: PageProps<"/descuentos/[id]">,
