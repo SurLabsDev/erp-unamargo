@@ -14,6 +14,7 @@ Es una **base reutilizable**: una instancia (deploy en Vercel + base Postgres pr
 | **Importación** | Carga inicial por CSV con plantilla oficial, preview fila por fila, solo crea (nunca actualiza) |
 | **Catálogo** | Categorías y subtipos administrables por el cliente (mate → de calabaza), precio, descripción y fotos por producto. Las fotos se achican en el navegador y viven en Supabase Storage |
 | **API pública** | `GET /api/public/v1/stock` — catálogo con stock, precio, clasificación y fotos para la web del cliente, con cache CDN |
+| **Descuentos** | Campañas con vigencia por fechas más interruptor, aplicables a productos, subtipos o categorías. Gana la regla más puntual. Solo porcentaje |
 | **Usuarios** | Hasta 5 activos, roles administración / operación-consulta, contraseñas temporales mostradas una única vez |
 
 ## Stack
@@ -165,6 +166,7 @@ El seed imprime **una única vez** la contraseña temporal del admin inicial: gu
 - **Supabase free** pausa los proyectos tras ~1 semana sin actividad: la instancia del cliente puede amanecer caída (la API pública incluida). **Neon free** no pausa pero tiene *cold starts* por scale-to-zero (primer request lento). Recomendación: **Neon** para empezar; si la instancia es crítica, plan pago del proveedor elegido.
 - **Resend**: sin dominio verificado solo envía al dueño de la cuenta (ver paso 4). El free tier (100 emails/día) sobra para alertas.
 - **Vercel Hobby** prohíbe uso comercial: instancia productiva ⇒ plan Pro.
+- **`/api/public/v1/stock`** cachea en el CDN de Vercel por URL completa, no por ruta: un caller anónimo que agregue un query string variable (`?n=1`, `?n=2`...) fuerza un cache miss distinto por cada valor. No es una vulnerabilidad (el endpoint sigue siendo de solo lectura y sin datos sensibles), pero con las campañas de descuento cada miss pasó de 2 a 5 queries, así que el costo por miss es mayor que antes.
 - **Backups**: los free tiers no garantizan point-in-time recovery y esta app es la única fuente de verdad del negocio del cliente. Supabase free directamente **no incluye backups automáticos**, así que el dump manual es el único que hay.
 
   ```bash

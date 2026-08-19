@@ -115,6 +115,7 @@ export default async function ProductDetailPage(
         currencyCode={settings.currencyCode}
         opciones={opciones}
         puedeEditar={user.role === "admin"}
+        discount={product.discount}
       />
 
       <ProductImages
