@@ -29,6 +29,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Panel" },
   { href: "/stock", label: "Stock" },
   { href: "/dinero", label: "Dinero" },
+  { href: "/descuentos", label: "Descuentos", adminOnly: true },
   { href: "/importar", label: "Importar", adminOnly: true },
   { href: "/configuracion", label: "Configuración", adminOnly: true },
 ];
