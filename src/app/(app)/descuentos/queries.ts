@@ -1,3 +1,8 @@
+// NOTE: `listCampaignsWithTargets` below is imported by the anonymous,
+// unauthenticated `src/app/api/public/v1/stock/route.ts`, even though this
+// module lives under the authenticated `(app)` route group's folder. Keep
+// every import in this file free of anything that depends on an authenticated
+// session, or that public endpoint breaks at runtime.
 import { asc, desc, eq, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
