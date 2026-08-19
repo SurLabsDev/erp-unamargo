@@ -14,6 +14,7 @@ Es una **base reutilizable**: una instancia (deploy en Vercel + base Postgres pr
 | **Importación** | Carga inicial por CSV con plantilla oficial, preview fila por fila, solo crea (nunca actualiza) |
 | **Catálogo** | Categorías y subtipos administrables por el cliente (mate → de calabaza), precio, descripción y fotos por producto. Las fotos se achican en el navegador y viven en Supabase Storage |
 | **API pública** | `GET /api/public/v1/stock` — catálogo con stock, precio, clasificación y fotos para la web del cliente, con cache CDN |
+| **Descuentos** | Campañas con vigencia por fechas más interruptor, aplicables a productos, subtipos o categorías. Gana la regla más puntual. Solo porcentaje |
 | **Usuarios** | Hasta 5 activos, roles administración / operación-consulta, contraseñas temporales mostradas una única vez |
 
 ## Stack
