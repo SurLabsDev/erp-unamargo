@@ -256,9 +256,6 @@ export const discountTargets = pgTable(
   ],
 );
 
-export type DiscountCampaignRow = typeof discountCampaigns.$inferSelect;
-export type DiscountTargetRow = typeof discountTargets.$inferSelect;
-
 // APPEND-ONLY ledger: never UPDATE nor DELETE rows here.
 export const stockMovements = pgTable(
   "stock_movements",
@@ -385,6 +382,8 @@ export type ProductCategory = typeof productCategories.$inferSelect;
 export type ProductSubtype = typeof productSubtypes.$inferSelect;
 export type Product = typeof products.$inferSelect;
 export type ProductImage = typeof productImages.$inferSelect;
+export type DiscountCampaignRow = typeof discountCampaigns.$inferSelect;
+export type DiscountTargetRow = typeof discountTargets.$inferSelect;
 export type StockMovement = typeof stockMovements.$inferSelect;
 export type CashCategory = typeof cashCategories.$inferSelect;
 export type CashMovement = typeof cashMovements.$inferSelect;
