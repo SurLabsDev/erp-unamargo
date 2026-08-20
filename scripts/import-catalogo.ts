@@ -606,9 +606,11 @@ type ClassifiedEntry = CatalogEntry & {
  * IN THIS SAME TRANSACTION -- read, never assumed, because a hardcoded id would
  * be wrong on any database but the one it was copied from.
  *
- * Every entry is resolved BEFORE the first product is inserted: a catalog that
- * has drifted away from TAXONOMY fails as one message about the name that is
- * missing, instead of a log listing twelve products created and then an error.
+ * Receives ONLY the entries that are going to be created, and resolves all of
+ * them BEFORE the first insert: a catalog that has drifted away from TAXONOMY
+ * fails as one message about the name that is missing, instead of a log listing
+ * twelve products created and then an error. An entry that is going to be
+ * skipped is never resolved -- see importProducts for why that matters.
  *
  * A subtype is looked up WITHIN its category. That is also what the composite
  * foreign key on (subtype_id, category_id) enforces, so getting it wrong here
@@ -685,6 +687,42 @@ async function classifyEntries(
   return classified;
 }
 
+/** The columns of a pre-existing row that the catalog also carries. Read for
+ * every SKU of the catalog, so a skip can say what that row is missing. */
+type ExistingProduct = {
+  sku: string;
+  categoryId: string | null;
+  price: string | null;
+  description: string | null;
+};
+
+/**
+ * What a pre-existing row is missing compared to what the catalog carries for
+ * that SKU. A bare "ya existe" reads as "this one is fine", and it is not: a
+ * product loaded by hand with no category is filtered out of the public API
+ * (/api/public/v1/stock joins on it) and one with no price shows up priceless
+ * on the client's site. The import still does NOT fill those in -- it cannot
+ * know whether the client edited that row from the ERP on purpose -- so saying
+ * it is all it can honestly do.
+ *
+ * Only ABSENCE is reported, never a difference: a row with another price is a
+ * decision somebody made, not a gap.
+ */
+function describeGaps(entry: CatalogEntry, row: ExistingProduct): string[] {
+  const gaps: string[] = [];
+  if (row.categoryId === null) gaps.push("categoría");
+  if (row.price === null) gaps.push("precio");
+  // Guarded by what the catalog has: nothing is missing if the catalog itself
+  // brings no description for that product.
+  if (
+    entry.description.trim() !== "" &&
+    (row.description === null || row.description.trim() === "")
+  ) {
+    gaps.push("descripción");
+  }
+  return gaps;
+}
+
 /**
  * Creates the catalog's products, and never touches one that is already there:
  * an existing SKU is left exactly as it is -- name, price, description and all
@@ -694,17 +732,24 @@ async function classifyEntries(
  *
  * Runs on the transaction handle the runner passes in, under the advisory lock
  * that transaction already took (see main()). It must NOT take it again.
+ *
+ * A run where everything is skipped is still worth making -- Task 6 finishes
+ * the photos on it -- so it stays alive on a taxonomy that drifted, and each
+ * skipped line says what that pre-existing row is missing.
  */
 export async function importProducts(
   db: Executor,
   entries: CatalogEntry[],
 ): Promise<{ created: number; skipped: number }> {
-  const classified = await classifyEntries(db, entries);
-
-  const existing = new Set(
+  const existing = new Map(
     (
       await db
-        .select({ sku: products.sku })
+        .select({
+          sku: products.sku,
+          categoryId: products.categoryId,
+          price: products.price,
+          description: products.description,
+        })
         .from(products)
         .where(
           inArray(
@@ -712,8 +757,10 @@ export async function importProducts(
             entries.map((entry) => entry.sku),
           ),
         )
-    ).map((row) => row.sku),
+    ).map((row): [string, ExistingProduct] => [row.sku, row]),
   );
+
+  const pending = entries.filter((entry) => !existing.has(entry.sku));
 
   // Checked BEFORE the first insert, not discovered halfway: on the client's
   // empty database 34 products fit with room to spare, but if someone had
@@ -723,15 +770,21 @@ export async function importProducts(
     .select({ active: count() })
     .from(products)
     .where(eq(products.isActive, true));
-  const toCreate = classified.filter(
-    (entry) => !existing.has(entry.sku),
-  ).length;
-  if (active + toCreate > MAX_ACTIVE_PRODUCTS) {
+  if (active + pending.length > MAX_ACTIVE_PRODUCTS) {
     throw new ImportError(
-      `el catálogo agrega ${toCreate} productos a los ${active} activos que ya hay y el tope es ${MAX_ACTIVE_PRODUCTS}. ` +
+      `el catálogo agrega ${pending.length} productos a los ${active} activos que ya hay y el tope es ${MAX_ACTIVE_PRODUCTS}. ` +
         `Desactivá productos desde Stock antes de correr el import.`,
     );
   }
+
+  // ONLY what is going to be created gets its taxonomy resolved. A run where
+  // every SKU already exists asks nothing of the taxonomy and therefore cannot
+  // fail on it -- which is exactly the run somebody makes to finish an
+  // interrupted photo upload, with half the client's photos already in the
+  // bucket, and the one that must not die because a category got renamed from
+  // the ERP in between. Drift still stops a product that has to be CREATED:
+  // that one has nowhere to hang.
+  const classified = await classifyEntries(db, pending);
 
   // Without a slug the client's site cannot link the product. The ones already
   // taken are collected ONCE and accumulated into the set, so two products of
@@ -746,13 +799,23 @@ export async function importProducts(
   let created = 0;
   let skipped = 0;
 
-  for (const entry of classified) {
-    if (existing.has(entry.sku)) {
-      skipped++;
-      log(`Producto "${entry.sku}" ya existe; se deja como está.`);
+  for (const entry of entries) {
+    const row = existing.get(entry.sku);
+    if (!row) continue;
+    skipped++;
+    const gaps = describeGaps(entry, row);
+    const line = `Producto "${entry.sku}" ya existe; se deja como está.`;
+    if (gaps.length === 0) {
+      log(line);
       continue;
     }
+    // Label first, list second, like formatSummary: with a colon nothing has
+    // to agree in gender or number with a list of one, two or three items.
+    // warn and not log, because this is the line the operator has to act on.
+    warn(`${line} Le falta: ${gaps.join(", ")}.`);
+  }
 
+  for (const entry of classified) {
     const slug = uniqueSlug(slugify(entry.name) || "producto", slugsUsados);
     slugsUsados.add(slug);
 
