@@ -57,7 +57,7 @@ type Executor = Db | Tx;
  * nothing to "resolvé el duplicado desde Configuración". Anything else is
  * unexpected and keeps its stack.
  */
-export class ImportError extends Error {
+class ImportError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "ImportError";
@@ -469,7 +469,7 @@ async function reorderCategories(
  * A second run over an already-imported database reports 0, and that is exactly
  * what the operator needs to read: nothing left to do.
  */
-export async function syncTaxonomy(
+async function syncTaxonomy(
   db: Executor,
 ): Promise<{ categoriesTouched: number }> {
   const touched = new Set<string>();
@@ -564,9 +564,9 @@ const catalogSchema = z.object({
 
 /** One product as the extractor left it. importImages reads `images` off these
  * same entries, outside the transaction. */
-export type CatalogEntry = z.infer<typeof catalogSchema>["products"][number];
+type CatalogEntry = z.infer<typeof catalogSchema>["products"][number];
 
-export function loadCatalog(): CatalogEntry[] {
+function loadCatalog(): CatalogEntry[] {
   const file = path.resolve(CATALOG_PATH);
   let raw: unknown;
   try {
@@ -747,7 +747,7 @@ function describeGaps(entry: CatalogEntry, row: ExistingProduct): string[] {
  * the photos on it -- so it stays alive on a taxonomy that drifted, and each
  * skipped line says what that pre-existing row is missing.
  */
-export async function importProducts(
+async function importProducts(
   db: Executor,
   entries: CatalogEntry[],
 ): Promise<{ created: number; skipped: number }> {
@@ -1066,16 +1066,16 @@ function assertStorageReady(): void {
  *   back. It counts LINKED photos: an object uploaded whose row never landed is
  *   not a photo the client has.
  */
-export async function importImages(
+async function importImages(
   db: Executor,
   entries: CatalogEntry[],
   demoDir: string,
   pathPrefix: string,
-  progress: { uploaded: number; skipped: number } = { uploaded: 0, skipped: 0 },
+  progress: { uploaded: number; skipped: number },
 ): Promise<{ uploaded: number; skipped: number }> {
-  // Cheap and socket-free. main() already ran it before the transaction; this
-  // is here because the function is exported and must not depend on its caller
-  // having done it.
+  // Cheap and socket-free. main() already ran it before the transaction, and
+  // it runs again here because this is where a missing variable would cost the
+  // most: the transaction is already committed and there is no way back.
   assertStorageReady();
 
   const bySku = new Map(
@@ -1589,9 +1589,21 @@ async function main(): Promise<void> {
     // The log above lists writes that may no longer exist. Say which: an
     // operator reading a failed production run has to know whether the rename
     // stuck.
+    //
+    // What this branch knows is that the COMMIT was never ACKNOWLEDGED, which
+    // is NOT the same as "it did not happen": `committed` is set when
+    // db.transaction() returns, so a commit whose acknowledgement is lost on
+    // the way back -- a hiccup of the Supabase pooler over the open internet,
+    // which is not exotic -- lands here with the client's 34 products already
+    // written. The classic in-doubt transaction: there is no honest way to tell
+    // the two apart from here, so the line says what it knows and names the one
+    // case where it might be wrong. The run being idempotent is what keeps the
+    // remedy cheap.
     if (started && !committed) {
       logError(
-        "La transacción se revirtió: la base quedó como estaba antes de esta corrida.",
+        "No se confirmó la transacción: salvo que se haya cortado la conexión durante el COMMIT, " +
+          "la base quedó como estaba antes de esta corrida. Si se cortó, verificá el estado antes " +
+          "de re-correr; la corrida es idempotente y retoma sin duplicar nada.",
       );
     }
     // The question is NOT "did the run finish", it is "did anything survive".

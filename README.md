@@ -169,15 +169,40 @@ npm run db:import-catalogo -- --dry-run
 
 El `--` no es decoración: sin él npm se come el flag y arranca la corrida real.
 
-**Leer la salida del simulacro entera antes de seguir.** Lo que tiene que estar:
+**Leer la salida del simulacro entera antes de seguir.** Y leerla sabiendo qué esperar: la instancia del cliente **no** es una base limpia. Trae la taxonomía sembrada el 19/08 (6 categorías en singular — `Mate`, `Bombilla`, `Termo`, `Matera`, `Yerba`, `Accesorios` — con 23 subtipos), así que el simulacro no imprime "4 categorías creadas con 12 subtipos": imprime renombres, una sola creación y un montón de desactivaciones.
 
-- La primera línea nombra la base destino (host, nombre y proyecto de Supabase). Si no es la del cliente, `DATABASE_URL` está apuntando a otro lado.
-- `Catálogo: 34 productos leídos`, y al final `El catálogo referencia 42 archivos y los 42 están en la demo`. Si falta un archivo, el script lo dice por nombre y no escribe nada.
-- Las 4 categorías (Mates, Bombillas, Combos, Accesorios) con sus 12 subtipos, y las 3 viejas (Termo, Yerba, Matera) desactivadas. Sobre una base donde nunca existieron, el aviso correcto es `no existe; nada que desactivar`.
-- El resumen: `productos creados 34, salteados 0` en la primera carga; `creados 0, salteados 34` si el catálogo ya está.
-- **Ninguna categoría ni subtipo creado con slug terminado en `-2`, `-3`, etc.** (las tres líneas de creación — categoría, subtipo y producto — imprimen el slug entre paréntesis, así que alcanza con leerlas). Eso no es un detalle cosmético: significa que la taxonomía se corrió de lugar (alguien renombró una categoría desde el ERP, que a propósito **no** cambia el slug, y el nombre viejo quedó dueño de la dirección). Seguir crearía una categoría duplicada con el nombre que el cliente conoce y los productos adentro de la que no ve. Se arregla desde Configuración, liberando el slug o unificando las dos filas, y recién ahí se vuelve a correr.
+Estos son los números exactos que tiene que dar. La columna de la derecha es la de una base limpia, que es lo que se ve en un ensayo y **no** lo que va a ver el operador acá:
 
-Cualquier ambigüedad que el script no pueda resolver solo — dos filas que difieren únicamente en mayúsculas o acentos, un slug ocupado, la categoría vieja y la nueva conviviendo — corta la corrida con un `ERROR:` en español que dice qué arreglar. Ninguno de esos casos escribe nada.
+| Líneas del simulacro | Instancia del cliente | Base limpia (ensayo) |
+|---|---|---|
+| `Categoría "X" renombrada a "Y"` | **2**: `Mate`→`Mates`, `Bombilla`→`Bombillas` | 0 |
+| `Categoría "X" creada (slug …)` | **1**: `Combos` | 4 |
+| `Categoría "X" desactivada` | **3**: `Termo`, `Yerba`, `Matera` | 0, con el aviso `no existe; nada que desactivar` |
+| `Subtipo "X" creado bajo "Y" (slug …)` | **11** | 12 |
+| `Subtipo "X" desactivado bajo "Y"` | **13** | 0 |
+| `Producto "X" creado (slug …)` | **34** | 34 |
+| Resumen | `categorías tocadas 7; productos creados 34, salteados 0` | `tocadas 4; creados 34, salteados 0` |
+
+Más tres líneas que no dependen del estado de la base:
+
+- La primera nombra la base destino (host, nombre y proyecto de Supabase). Si no es la del cliente, `DATABASE_URL` está apuntando a otro lado.
+- `Catálogo: 34 productos leídos de scripts/data/catalogo-unamargo.json.`
+- `El catálogo referencia 42 archivos y los 42 están en la demo.` Si falta uno, el script lo nombra y no escribe nada.
+
+**Lo que NO va a estar, y está bien:**
+
+- **Ninguna línea de `Accesorios` como categoría creada ni renombrada.** Ya existe con ese nombre y ese slug, y el sync no escribe lo que ya está bien: **silencio quiere decir que estaba correcto**. Aparece una sola vez, en el renumerado (`Categoría "Accesorios" ordenada en 4.`).
+- **11 subtipos creados y no 12**, por lo mismo: `Limpieza` ya existe bajo `Accesorios` y se reusa en vez de duplicarse.
+- Las líneas `ordenado en N` / `ordenada en N` (13 en esta corrida) no cambian contenido: reacomodan en qué orden se listan las categorías y los subtipos, dejando 1..N para los que el catálogo declara y el resto detrás.
+
+**Lo que tiene que frenar la corrida:**
+
+- **Cualquier categoría o subtipo creado con slug terminado en `-2`, `-3`, etc.** Las tres líneas de creación — categoría, subtipo y producto — imprimen el slug entre paréntesis, así que alcanza con leerlas. Un slug con sufijo significa que la taxonomía se corrió de lugar: alguien renombró una categoría o un subtipo desde el ERP, que a propósito **no** cambia el slug, y el nombre viejo quedó dueño de la dirección. Seguir crearía una categoría duplicada, con el nombre que el cliente conoce, y los productos adentro de la que no ve.
+
+  **Esta deriva es asimétrica, y por eso el chequeo del slug importa tanto:** `Mates` y `Bombillas` están protegidas por la guarda de slug de los renombres y **abortan ruidoso** (`el slug "mates" ya lo usa la categoría "…"`); `Combos` y `Accesorios` no tienen esa guarda, **crean el duplicado con slug `-2` y la corrida sale con 0 como si todo hubiera ido bien**. El chequeo del slug es lo único que atrapa esa mitad silenciosa. Se arregla desde Configuración — liberando el slug o unificando las dos filas — y recién ahí se vuelve a correr.
+
+- **Cualquier número de la tabla que no coincida.** Si el simulacro creó categorías que esperabas ver renombradas, o desactivó menos de 3, la taxonomía cambió desde el 19/08 y hay que mirar Configuración antes de seguir. El simulacro no escribió nada, así que no hay apuro.
+- **Cualquier línea `ERROR:`.** Las ambigüedades que el script no puede resolver solo — dos filas que difieren únicamente en mayúsculas o acentos, un slug ocupado, la categoría vieja y la nueva conviviendo — cortan la corrida con un mensaje en español que dice qué arreglar. Ninguno de esos casos escribe nada.
 
 ```bash
 # 3. Corrida real, con la salida guardada: es larga y es el único registro de qué subió.
@@ -191,12 +216,13 @@ Al terminar: `npm run db:check` (tiene que pasar), `curl https://<instancia>/api
 Es la única que puede dejar cosas a medias, porque el bucket no revierte. Lo que el script garantiza:
 
 - Un producto se sube **entero o nada**: primero van todos sus archivos y recién después sus filas de `product_images`, en un solo INSERT. Nunca queda una fila apuntando a un objeto que no está (eso sería una imagen rota en la web del cliente).
-- Si la corrida se cae ahí, la última línea es `Resumen hasta el fallo (esto quedó escrito)` con los números reales: los productos ya están commiteados y las fotos contadas son las **enlazadas**, no las subidas.
+- Si la corrida se cae ahí, **buscá la línea `Resumen hasta el fallo (esto quedó escrito)`**: trae los números reales, con los productos ya commiteados y las fotos contadas como **enlazadas**, no como subidas. No cuentes con que sea la última: el `ERROR:` sale después, y encima por stderr mientras el resumen sale por stdout, así que en el log armado con `tee` el orden entre las dos ni siquiera está garantizado.
 - El remedio es **volver a correrlo**: retoma por los productos sin fotos y saltea los que ya tienen. Lo que puede sobrar son objetos huérfanos en el bucket (subidos sin su fila), que no se ven en ningún lado y ocupan unos KB. Borrarlos es opcional y se hace desde el panel de Storage de Supabase.
+- **Lo que no tiene remedio automático es al revés: filas sin objeto.** `--path-prefix` solo cambia la clave del bucket, y esa clave queda guardada tal cual en `product_images.path`. Si alguien ensaya con `--path-prefix _prueba/` contra la base del cliente y después borra ese prefijo del bucket, quedan 42 filas apuntando a nada — imágenes rotas en la web — y ninguna corrida posterior lo arregla, porque esos productos "ya tienen fotos" y se saltean para siempre. La única salida es borrar esas filas a mano. Por eso: **`--path-prefix` nunca se combina con la base de producción.** Es exclusivamente para ensayos contra una base descartable.
 
 ### Ensayos
 
-Para probar el runner sin tocar la instancia del cliente: un Postgres descartable con su propio `DATABASE_URL` **exportado** (el entorno le gana al `.env`, así que la corrida no se va a producción por accidente) y `--path-prefix _prueba/`, que mete todo bajo ese prefijo en el bucket para poder borrarlo después sin dudar de qué era de quién. Así se ensayó el runner de punta a punta el 20/08/2026 (base limpia, 34 productos, 42 fotos subidas, servidas y después borradas del bucket) antes de habilitarlo contra la instancia del cliente.
+Para probar el runner sin tocar la instancia del cliente: un Postgres descartable con su propio `DATABASE_URL` **exportado** (el entorno le gana al `.env`, así que la corrida no se va a producción por accidente) y `--path-prefix _prueba/`, que mete todo bajo ese prefijo en el bucket para poder borrarlo después sin dudar de qué era de quién. **Las dos cosas van juntas o ninguna**: el prefijo contra la base del cliente deja filas apuntando a objetos que después se borran (ver arriba). Así se ensayó el runner de punta a punta el 20/08/2026 (base limpia, 34 productos, 42 fotos subidas, servidas y después borradas del bucket) antes de habilitarlo contra la instancia del cliente.
 
 ## Smoke checklist manual (QA completo)
 
