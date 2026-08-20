@@ -9,9 +9,10 @@
  * announces its target database (host and name, never credentials) on the first
  * line, so the operator can see which one is about to change.
  *
- * Parts 1 to 3 (taxonomy, the command line and the products). Task 6 (see
- * .superpowers/sdd/2026-08-20-import-catalogo) extends this same file with the
- * photo upload.
+ * Four phases: the taxonomy, the command line, the products and the photos.
+ * The first three are one transaction; the photos come last and OUTSIDE it,
+ * because a bucket does not roll back. Everything that can be undone is settled
+ * before the first byte leaves for Supabase.
  *
  * The taxonomy step reconciles the product taxonomy seeded on 2026-08-19 --
  * inferred from demo fixtures -- against the real range the client's own HTML
@@ -22,7 +23,11 @@
  * The product step then creates the 34 products of
  * scripts/data/catalogo-unamargo.json under that taxonomy, with stock 0 and no
  * ledger movement, and never touches a SKU that is already in the database.
+ *
+ * The photo step then uploads the pictures those products carry in the client's
+ * own demo folder -- which this script only ever READS -- and links them.
  */
+import { randomUUID } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { count, eq, inArray, sql } from "drizzle-orm";
@@ -31,8 +36,9 @@ import { PRODUCT_LIMIT_LOCK } from "@/lib/db/locks";
 import { slugify, uniqueSlug } from "@/lib/domain/slug";
 import { MAX_ACTIVE_PRODUCTS } from "@/lib/domain/stock";
 import { createScriptDb, schema } from "./lib/db";
+import { storageConfigured, uploadFile } from "./lib/storage-upload";
 
-const { productCategories, productSubtypes, products } = schema;
+const { productCategories, productImages, productSubtypes, products } = schema;
 
 type Db = ReturnType<typeof createScriptDb>["db"];
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -40,7 +46,7 @@ type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
  * The sync runs on whatever handle the caller gives it: the plain connection or
  * an open transaction. main() opens the transaction OUTSIDE syncTaxonomy on
  * purpose -- T4 needs to run the same body and roll it back for `--dry-run`,
- * and T6 uploads photos to a bucket, which cannot live inside a transaction.
+ * and the photo phase uploads to a bucket, which cannot live inside one.
  */
 type Executor = Db | Tx;
 
@@ -552,8 +558,8 @@ const catalogSchema = z.object({
     .min(1),
 });
 
-/** One product as the extractor left it. Task 6 reads `images` off these same
- * entries, outside the transaction. */
+/** One product as the extractor left it. importImages reads `images` off these
+ * same entries, outside the transaction. */
 export type CatalogEntry = z.infer<typeof catalogSchema>["products"][number];
 
 export function loadCatalog(): CatalogEntry[] {
@@ -733,7 +739,7 @@ function describeGaps(entry: CatalogEntry, row: ExistingProduct): string[] {
  * Runs on the transaction handle the runner passes in, under the advisory lock
  * that transaction already took (see main()). It must NOT take it again.
  *
- * A run where everything is skipped is still worth making -- Task 6 finishes
+ * A run where everything is skipped is still worth making -- importImages finishes
  * the photos on it -- so it stays alive on a taxonomy that drifted, and each
  * skipped line says what that pre-existing row is missing.
  */
@@ -863,6 +869,260 @@ export async function importProducts(
   return { created, skipped };
 }
 
+// --- Photo upload ------------------------------------------------------------
+
+/**
+ * The only extensions this uploads, and the Content-Type each one is sent with.
+ * The bucket declares `allowed_mime_types` (image/jpeg, image/png, image/webp),
+ * so anything else is rejected by Supabase with a 400 -- better to say which
+ * file is wrong before a single byte goes out than to read that status 20
+ * photos in. Today the catalog is 42 files and all of them are .jpg.
+ */
+const CONTENT_TYPES: Record<string, string> = {
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+  ".webp": "image/webp",
+};
+
+/** One of the catalog's image references, resolved to a file that exists. */
+type ImageFile = {
+  /** Absolute path on disk, in the exact form that opened. */
+  file: string;
+  /** Extension without the dot, lower case. The bucket key keeps it. */
+  ext: string;
+  contentType: string;
+};
+
+/**
+ * macOS stores filenames as NFD (accents as combining marks) while the demo's
+ * HTML -- and therefore the generated catalog -- has them as NFC (precomposed).
+ * They are the same path and they differ byte for byte. APFS looks up either
+ * form, a case- and normalization-sensitive volume does not, so all three are
+ * tried and the one that opened is the one that gets read later.
+ * (`bombillón recto premium dorado frente.jpg` is exactly this case.)
+ */
+function existingFile(file: string): string | null {
+  for (const candidate of [file, file.normalize("NFC"), file.normalize("NFD")]) {
+    try {
+      if (statSync(candidate).isFile()) return candidate;
+    } catch {
+      // Not under this form; try the next.
+    }
+  }
+  return null;
+}
+
+/**
+ * Every distinct image the given entries name, resolved against the demo folder
+ * and checked to exist, WITHOUT opening a socket or touching the database.
+ *
+ * Called before the first upload, and it is the reason it exists: a typo in
+ * `--demo-dir`, or a photo that was renamed inside the demo, must stop the run
+ * with the file named -- not leave the client's bucket with the first eleven
+ * products done and the twelfth half linked. It is also the whole of what a
+ * `--dry-run` can honestly check about this phase.
+ */
+function resolveImageFiles(
+  entries: CatalogEntry[],
+  demoDir: string,
+): Map<string, ImageFile> {
+  const resolved = new Map<string, ImageFile>();
+  const missing: string[] = [];
+
+  for (const entry of entries) {
+    for (const ref of entry.images) {
+      if (resolved.has(ref) || missing.includes(ref)) continue;
+
+      const ext = path.extname(ref).toLowerCase();
+      const contentType = CONTENT_TYPES[ext];
+      if (!contentType) {
+        throw new ImportError(
+          `la foto "${ref}" del producto "${entry.sku}" tiene una extensión que el bucket no acepta. ` +
+            `Solo se suben ${Object.keys(CONTENT_TYPES).join(", ")}.`,
+        );
+      }
+
+      // The catalog is generated and versioned, so this is not defending
+      // against a hostile file: it is what keeps a bad regeneration from
+      // publishing something from outside the client's demo folder.
+      const file = path.resolve(demoDir, ref);
+      if (!file.startsWith(`${demoDir}${path.sep}`)) {
+        throw new ImportError(
+          `la foto "${ref}" del producto "${entry.sku}" cae fuera de la carpeta de la demo (${demoDir}). ` +
+            `Regenerá el catálogo con npx tsx scripts/extract-demo-catalog.ts.`,
+        );
+      }
+
+      const found = existingFile(file);
+      if (!found) {
+        missing.push(ref);
+        continue;
+      }
+      resolved.set(ref, { file: found, ext: ext.slice(1), contentType });
+    }
+  }
+
+  if (missing.length > 0) {
+    // All of them, not the first: the operator who pointed --demo-dir at the
+    // wrong folder should read that once, not once per re-run.
+    throw new ImportError(
+      `faltan ${missing.length} foto(s) en ${demoDir}: ${missing.join(", ")}. ` +
+        `Revisá --demo-dir o regenerá el catálogo con npx tsx scripts/extract-demo-catalog.ts.`,
+    );
+  }
+  return resolved;
+}
+
+/**
+ * Uploads each product's photos to the `productos` bucket and links them.
+ *
+ * Runs OUTSIDE the transaction, on the plain connection, and only after it has
+ * closed: `createScriptDb` opens the pool with `max: 1`, so a query here while
+ * the transaction was still open would wait forever for the connection it
+ * holds. Outside is also the only place it CAN run -- an HTTP POST has no
+ * rollback -- and that is why it goes last: everything reversible is settled
+ * before the first byte leaves.
+ *
+ * Two orders matter and neither is interchangeable:
+ *
+ * - The file goes up FIRST and the `product_images` row SECOND. A row pointing
+ *   at an object that is not there shows a broken image on the client's site.
+ *   An orphaned object in the bucket is invisible and costs nothing.
+ * - A product that ALREADY has rows in `product_images` is skipped whole. That
+ *   is what makes this safe to run twice: the alternative -- topping it up --
+ *   would re-upload the photo the client deleted from Stock on purpose.
+ *
+ * `progress` is updated as it goes, photo by photo, and it is the same object
+ * main() reads in its `finally`. A failure at photo 13 has to be able to say
+ * that 12 are in the bucket and linked, because nothing here rolls back.
+ */
+export async function importImages(
+  db: Executor,
+  entries: CatalogEntry[],
+  demoDir: string,
+  pathPrefix: string,
+  progress: { uploaded: number; skipped: number } = { uploaded: 0, skipped: 0 },
+): Promise<{ uploaded: number; skipped: number }> {
+  // Once, before the first product: an import that cannot write to the bucket
+  // has to stop before it starts, not fail 42 times in a row.
+  if (!storageConfigured()) {
+    throw new ImportError(
+      "faltan SUPABASE_URL o SUPABASE_SECRET_KEY: sin ellas no se puede subir ninguna foto. " +
+        "Los productos y la taxonomía ya quedaron escritos; completá el entorno y volvé a correr el import.",
+    );
+  }
+
+  const bySku = new Map(
+    (
+      await db
+        .select({ id: products.id, sku: products.sku })
+        .from(products)
+        .where(
+          inArray(
+            products.sku,
+            entries.map((entry) => entry.sku),
+          ),
+        )
+    ).map((row): [string, string] => [row.sku, row.id]),
+  );
+
+  // One read for the whole catalog instead of one per product. Only the ids
+  // matter: how MANY rows a product has is not the question, whether it has any
+  // is.
+  const ids = [...bySku.values()];
+  const withPhotos = new Set(
+    ids.length === 0
+      ? []
+      : (
+          await db
+            .select({ productId: productImages.productId })
+            .from(productImages)
+            .where(inArray(productImages.productId, ids))
+            .groupBy(productImages.productId)
+        ).map((row) => row.productId),
+  );
+
+  const pending = entries.filter((entry) => {
+    const id = bySku.get(entry.sku);
+    return id !== undefined && !withPhotos.has(id);
+  });
+
+  // Every file that is about to go up, checked before the first one does.
+  const files = resolveImageFiles(pending, demoDir);
+
+  for (const entry of entries) {
+    const productId = bySku.get(entry.sku);
+    if (productId === undefined) {
+      // The product phase either created this SKU or found it, so getting here
+      // means somebody deleted the row between the commit and now. The import
+      // does NOT create it from here: that belongs to the product phase, under
+      // its advisory lock and its 150-active cap.
+      progress.skipped += entry.images.length;
+      warn(
+        `Producto "${entry.sku}" no está en la base; sus ${entry.images.length} foto(s) quedan sin subir.`,
+      );
+      continue;
+    }
+    if (withPhotos.has(productId)) {
+      progress.skipped += entry.images.length;
+      log(`Producto "${entry.sku}" ya tiene fotos; se deja como está.`);
+      continue;
+    }
+    if (entry.images.length === 0) continue;
+
+    let linked = 0;
+    try {
+      for (const [index, ref] of entry.images.entries()) {
+        const image = files.get(ref);
+        // resolveImageFiles walked these same entries, so this cannot miss.
+        if (!image) throw new ImportError(`la foto "${ref}" no se resolvió.`);
+
+        // A fresh uuid per upload, never a name derived from the file: the
+        // Supabase CDN caches public URLs, so reusing a key serves the OLD
+        // image (see the comment on productImages in src/lib/db/schema.ts).
+        // The SKU only makes the bucket readable when browsing it; catalogSchema
+        // already constrains it to [A-Z0-9_-]{1,40}, the same alphabet
+        // src/lib/storage.ts sanitizes to.
+        const bucketPath = `${pathPrefix}${entry.sku}/${randomUUID()}.${image.ext}`;
+
+        const uploaded = await uploadFile({
+          bucketPath,
+          bytes: readFileSync(image.file),
+          contentType: image.contentType,
+        });
+        if (!uploaded.ok) {
+          throw new ImportError(
+            `no se pudo subir la foto "${ref}" del producto "${entry.sku}": ${uploaded.error}`,
+          );
+        }
+
+        // AFTER the object exists, never before.
+        await db
+          .insert(productImages)
+          .values({ productId, path: bucketPath, sortOrder: index });
+
+        linked++;
+        progress.uploaded++;
+        log(`Foto ${index + 1}/${entry.images.length} de "${entry.sku}" subida como "${bucketPath}".`);
+      }
+    } catch (error) {
+      // The skip rule above is per product, so a product left half done is NOT
+      // finished by running the script again: it would be skipped for having
+      // photos. Say so here, where the SKU is known.
+      if (linked > 0) {
+        logError(
+          `El producto "${entry.sku}" quedó con ${linked} de ${entry.images.length} fotos. ` +
+            `Una corrida nueva lo saltea porque ya tiene fotos: borrale las que quedaron desde Stock y volvé a correr el import.`,
+        );
+      }
+      throw error;
+    }
+  }
+
+  return { uploaded: progress.uploaded, skipped: progress.skipped };
+}
+
 // --- Command line ------------------------------------------------------------
 
 /**
@@ -893,13 +1153,13 @@ const HELP = [
 ].join("\n");
 
 type ImportOptions = {
-  /** Absolute path to an existing directory. Task 6 reads the photos there. */
+  /** Absolute path to an existing directory. The photos are read there. */
   demoDir: string;
-  /** Either "" or a prefix ending in "/". Task 6 puts it in front of every
-   * object key it writes to the bucket. */
+  /** Either "" or a prefix ending in "/". Goes in front of every object key
+   * written to the bucket. */
   pathPrefix: string;
   /** Runs the whole import and keeps none of it: the transaction is rolled
-   * back and Task 6 uploads no file. */
+   * back and no file is uploaded. */
   dryRun: boolean;
 };
 
@@ -1056,7 +1316,9 @@ type ImportSummary = {
   productsCreated: number;
   productsSkipped: number;
   /** Photos uploaded and linked, and photos not uploaded because the product
-   * already had its own. Filled by Task 6; honest zeros until then. */
+   * already had its own. PHOTOS, not products: a skipped product with three
+   * pictures adds three. Filled by importImages, as it goes -- a failure
+   * halfway through the bucket still has to report what is in it. */
   photosUploaded: number;
   photosSkipped: number;
 };
@@ -1133,7 +1395,8 @@ async function main(): Promise<void> {
 
   // Read before the connection is opened: a catalog that does not parse is not
   // worth a transaction, and the failure is the operator's to fix on disk.
-  // Task 6 uploads the photos of these same entries, outside the transaction.
+  // importImages uploads the photos of these same entries, outside the
+  // transaction.
   const entries = loadCatalog();
   log(`Catálogo: ${entries.length} productos leídos de ${CATALOG_PATH}.`);
 
@@ -1150,9 +1413,9 @@ async function main(): Promise<void> {
       // One transaction for the whole taxonomy: ~30 statements in autocommit
       // would leave the client's taxonomy half migrated if any of them failed.
       // It is opened here and not inside syncTaxonomy so this runner can roll
-      // the same body back for --dry-run and T6 can upload photos outside it.
+      // the same body back for --dry-run and the photos can go up outside it.
       //
-      // TRAP for T5/T6: createScriptDb opens the client with `max: 1`, so the
+      // TRAP: createScriptDb opens the client with `max: 1`, so the
       // transaction holds the ONLY connection. Any query issued on the outer
       // `db` handle while this is open waits for a connection that cannot be
       // freed until the transaction ends: it hangs forever, with no error and
@@ -1161,11 +1424,12 @@ async function main(): Promise<void> {
         started = true;
         // FIRST statement of the transaction, before anything writes: same
         // order as src/lib/import-runner.ts:73, the other place that inserts
-        // products under the 150-active cap. T5 checks that cap and must not
+        // products under the 150-active cap. importProducts checks that cap and
+        // must not
         // take the lock itself further down -- a transaction that has already
         // written unique-indexed columns and only then asks for a lock is the
         // asymmetry that turns two concurrent writers into a deadlock instead
-        // of a queue. It costs nothing here and it settles the order for T5.
+        // of a queue. It costs nothing here and it settles the order once.
         await tx.execute(
           sql`select pg_advisory_xact_lock(${PRODUCT_LIMIT_LOCK})`,
         );
@@ -1196,9 +1460,42 @@ async function main(): Promise<void> {
       );
     }
 
-    // T6 uploads the photos HERE, OUTSIDE the transaction (a bucket does not
-    // roll back) and only when options.dryRun is false. It reads the files
-    // from options.demoDir and prefixes its keys with options.pathPrefix.
+    // The photos, OUTSIDE the transaction: a bucket does not roll back, so
+    // this is the last thing that happens and the only phase whose failure
+    // leaves something behind.
+    if (options.dryRun) {
+      // NOT a second implementation of the phase below: it is the part of that
+      // phase that has no side effect. It resolves and checks every file the
+      // catalog names -- the one thing about the photos a simulation can
+      // honestly verify -- and stops before the first request, so a --dry-run
+      // cannot reach the network.
+      //
+      // The counters stay at 0 on purpose. The transaction just rolled back,
+      // so on the client's first import there are no products to hang photos
+      // from and any "subiría N" printed here would be a number produced by
+      // reasoning the real run does not do.
+      const files = resolveImageFiles(entries, options.demoDir);
+      log(
+        `No se sube ninguna foto. El catálogo referencia ${files.size} archivos y los ${files.size} están en la demo.`,
+      );
+    } else {
+      const photos = { uploaded: 0, skipped: 0 };
+      try {
+        await importImages(
+          db,
+          entries,
+          options.demoDir,
+          options.pathPrefix,
+          photos,
+        );
+      } finally {
+        // In `finally`, not after the call: a failure at photo 13 still has to
+        // report the 12 that are in the bucket and linked. Nothing down here
+        // rolls back.
+        summary.photosUploaded = photos.uploaded;
+        summary.photosSkipped = photos.skipped;
+      }
+    }
 
     log(
       `Resumen${options.dryRun ? " del SIMULACRO (nada de esto se escribió)" : ""}: ${formatSummary(summary)}.`,
@@ -1214,11 +1511,12 @@ async function main(): Promise<void> {
     }
     // The question is NOT "did the run finish", it is "did anything survive".
     // A summary of a rolled-back transaction describes a state that does not
-    // exist. But once the transaction has committed -- or once T6 has put a
+    // exist. But once the transaction has committed -- or once importImages has
+    // put a
     // photo in the bucket, which no rollback takes back -- the operator needs
     // those numbers precisely BECAUSE the run failed: they are the only record
-    // of what is now in the client's database and bucket. T6: keep this
-    // condition true for anything it uploads.
+    // of what is now in the client's database and bucket. importImages keeps
+    // this condition true by counting each photo the instant it is linked.
     if (committed || summary.photosUploaded > 0) {
       log(
         `Resumen hasta el fallo (esto quedó escrito): ${formatSummary(summary)}.`,
