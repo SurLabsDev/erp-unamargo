@@ -102,7 +102,19 @@ const MERGES: MergeRule[] = [
 ];
 
 /** Locates `const PRODUCTS = [ ... ]` in the demo HTML and returns the raw
- * JS source of the array literal, brackets included. */
+ * JS source of the array literal, brackets included.
+ *
+ * Assumption: this balances brackets over raw characters, with no
+ * string-literal awareness — a `[` or `]` inside a future fullDesc or spec
+ * value would desync the depth counter and produce an invalid slice. That is
+ * a real gap, not a hypothetical one, but a full JS tokenizer is
+ * disproportionate for a one-off script against a single known file, whose
+ * current content was checked by hand to contain no such stray brackets
+ * (only the structural ones for PRODUCTS/specs/images/variants). The caller
+ * wraps the subsequent JS evaluation in a try/catch, so an invalid slice
+ * (or one that is syntactically valid JS but semantically wrong) is reported
+ * through this script's own [extract-demo-catalog] error convention instead
+ * of crashing with a raw engine SyntaxError. */
 function extractProductsSource(html: string): string {
   const marker = "const PRODUCTS = [";
   const markerStart = html.indexOf(marker);
@@ -128,37 +140,53 @@ function extractProductsSource(html: string): string {
 
 /** Evaluates the extracted source as JavaScript. It is not JSON (single
  * quotes, unquoted keys, trailing commas), so it needs a real JS evaluation
- * rather than JSON.parse. */
+ * rather than JSON.parse. Any SyntaxError from an invalid slice propagates
+ * to the caller, which reports it through the script's own error convention. */
 function evaluateProducts(source: string): DemoProduct[] {
   const factory = new Function(`"use strict"; return (${source});`);
   return factory() as DemoProduct[];
 }
 
 /** Drops the merged-away products and applies the one price correction, all
- * declared as data in MERGES rather than as loose conditionals. */
-function applyMerges(products: DemoProduct[]): DemoProduct[] {
+ * declared as data in MERGES rather than as loose conditionals.
+ *
+ * Also reports which declared `priceOverride`s never found their target
+ * variant (wrong `keptInFavourOf` product name, or wrong `variantLabel`), so
+ * the caller can fail loudly instead of silently shipping an un-overridden
+ * price. */
+function applyMerges(
+  products: DemoProduct[],
+): { merged: DemoProduct[]; unappliedOverrides: MergeRule[] } {
   const droppedNames = new Set(MERGES.map((merge) => merge.dropped));
   const overrideByKeptName = new Map(
     MERGES.filter((merge) => merge.priceOverride).map((merge) => [
       merge.keptInFavourOf,
-      merge.priceOverride!,
+      merge,
     ]),
   );
+  const appliedOverrideNames = new Set<string>();
 
-  return products
+  const merged = products
     .filter((product) => !droppedNames.has(product.name))
     .map((product) => {
-      const override = overrideByKeptName.get(product.name);
-      if (!override || !product.variants) return product;
-      return {
-        ...product,
-        variants: product.variants.map((variant) =>
-          variant.label === override.variantLabel
-            ? { ...variant, price: override.price }
-            : variant,
-        ),
-      };
+      const merge = overrideByKeptName.get(product.name);
+      if (!merge || !merge.priceOverride || !product.variants) return product;
+      const override = merge.priceOverride;
+      let matched = false;
+      const variants = product.variants.map((variant) => {
+        if (variant.label !== override.variantLabel) return variant;
+        matched = true;
+        return { ...variant, price: override.price };
+      });
+      if (matched) appliedOverrideNames.add(merge.keptInFavourOf);
+      return { ...product, variants };
     });
+
+  const unappliedOverrides = MERGES.filter(
+    (merge) => merge.priceOverride && !appliedOverrideNames.has(merge.keptInFavourOf),
+  );
+
+  return { merged, unappliedOverrides };
 }
 
 /** Builds one catalog entry, either for a plain product (variant === null) or
@@ -227,16 +255,41 @@ function main() {
   console.log(`[extract-demo-catalog] Leyendo ${htmlPath}`);
   const html = readFileSync(htmlPath, "utf8");
 
-  const source = extractProductsSource(html);
-  const rawProducts = evaluateProducts(source);
+  let rawProducts: DemoProduct[];
+  try {
+    const source = extractProductsSource(html);
+    rawProducts = evaluateProducts(source);
+  } catch (error) {
+    console.error(
+      `[extract-demo-catalog] ERROR: no se pudo extraer/evaluar el array PRODUCTS: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    process.exitCode = 1;
+    return;
+  }
   console.log(
     `[extract-demo-catalog] ${rawProducts.length} productos crudos encontrados en la demo.`,
   );
 
-  const merged = applyMerges(rawProducts);
+  const { merged, unappliedOverrides } = applyMerges(rawProducts);
   console.log("[extract-demo-catalog] Fusiones aplicadas:");
   for (const merge of MERGES) {
     console.log(`[extract-demo-catalog]   - "${merge.dropped}" -> "${merge.keptInFavourOf}": ${merge.reason}`);
+  }
+
+  if (unappliedOverrides.length > 0) {
+    console.error(
+      `[extract-demo-catalog] ERROR: ${unappliedOverrides.length} priceOverride declarado(s) nunca encontraron su variante (producto o variantLabel no coincide):`,
+    );
+    for (const merge of unappliedOverrides) {
+      console.error(
+        `[extract-demo-catalog]   - "${merge.keptInFavourOf}" esperaba la variante "${merge.priceOverride!.variantLabel}"`,
+      );
+    }
+    console.error(
+      "[extract-demo-catalog] ERROR: un priceOverride que no se aplica deja un precio sin corregir. Parar y revisar.",
+    );
+    process.exitCode = 1;
+    return;
   }
 
   const products = toEntries(merged);
@@ -286,6 +339,13 @@ function main() {
   console.log(
     `[extract-demo-catalog] Rutas de imagen unicas: ${uniqueImages.length} (esperado ${EXPECTED_UNIQUE_IMAGE_COUNT}).`,
   );
+  if (uniqueImages.length !== EXPECTED_UNIQUE_IMAGE_COUNT) {
+    console.error(
+      `[extract-demo-catalog] ERROR: se esperaban ${EXPECTED_UNIQUE_IMAGE_COUNT} rutas de imagen unicas y se encontraron ${uniqueImages.length}. Parar y revisar.`,
+    );
+    process.exitCode = 1;
+    return;
+  }
   if (missingImages.length > 0) {
     console.error(`[extract-demo-catalog] ERROR: ${missingImages.length} imagenes no existen en disco:`);
     for (const imagePath of missingImages) console.error(`[extract-demo-catalog]   - ${imagePath}`);
