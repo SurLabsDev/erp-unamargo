@@ -42,7 +42,7 @@ type Executor = Db | Tx;
  * nothing to "resolvé el duplicado desde Configuración". Anything else is
  * unexpected and keeps its stack.
  */
-class ImportError extends Error {
+export class ImportError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "ImportError";
@@ -218,8 +218,23 @@ async function applyRenames(db: Executor): Promise<void> {
   for (const rename of RENAMES) {
     // Re-read per entry: the previous rename moved a name and a slug.
     const categories = await fetchCategories(db);
-    const source = categories.find((c) => c.name === rename.from);
-    const target = categories.find((c) => c.name === rename.to);
+    // Through matchByName, like every other name lookup in this file: a row
+    // left as "mate" in lower case is NOT the source of the rename, and it is
+    // not a licence to create "Mates" beside it either.
+    const source = matchByName(
+      categories,
+      rename.from,
+      (near) =>
+        `la categoría "${near.name}" difiere de "${rename.from}" solo por mayúsculas o acentos. ` +
+        `Corregila desde Configuración y volvé a correr el import.`,
+    );
+    const target = matchByName(
+      categories,
+      rename.to,
+      (near) =>
+        `la categoría "${near.name}" difiere de "${rename.to}" solo por mayúsculas o acentos. ` +
+        `Corregila desde Configuración y volvé a correr el import.`,
+    );
     const slugOwner = categories.find((c) => c.slug === rename.toSlug);
 
     // Both rows exist: merging them would strand one and its subtypes.
@@ -369,7 +384,6 @@ async function applyDeactivations(
       .update(productCategories)
       .set({ isActive: false })
       .where(eq(productCategories.id, category.id));
-    category.isActive = false;
     console.log(`[import-catalogo] Categoría "${name}" desactivada.`);
   }
 }
@@ -427,7 +441,6 @@ export async function syncTaxonomy(db: Executor): Promise<void> {
         .update(productCategories)
         .set({ isActive: true })
         .where(eq(productCategories.id, category.id));
-      category.isActive = true;
       console.log(`[import-catalogo] Categoría "${entry.category}" reactivada.`);
     }
 
@@ -440,7 +453,14 @@ export async function syncTaxonomy(db: Executor): Promise<void> {
 
 // --- Runner -------------------------------------------------------------
 
-/** Host and database name of the target, NEVER user or password. */
+/**
+ * Host, database name and -- on Supabase -- the project, NEVER the password and
+ * never the whole user. The pooler host (`aws-0-<region>.pooler.supabase.com`) is the
+ * same for every project on a region, so the host alone cannot tell the client's
+ * database from any other; what identifies it is the `<projectref>` that Supabase
+ * puts in the user (`postgres.<projectref>`). That ref is not a secret: it is the
+ * subdomain of the public SUPABASE_URL.
+ */
 function describeTarget(): string {
   const url = process.env.DATABASE_URL;
   if (!url) {
@@ -450,7 +470,9 @@ function describeTarget(): string {
     const parsed = new URL(url);
     const host = parsed.port ? `${parsed.hostname}:${parsed.port}` : parsed.hostname;
     const name = parsed.pathname.replace(/^\//, "") || "(sin nombre)";
-    return `${host}/${name}`;
+    const [, ...ref] = parsed.username.split(".");
+    const project = ref.length > 0 ? ` (proyecto ${ref.join(".")})` : "";
+    return `${host}/${name}${project}`;
   } catch {
     return "DATABASE_URL ilegible";
   }
@@ -459,15 +481,32 @@ function describeTarget(): string {
 async function main(): Promise<void> {
   console.log(`[import-catalogo] Base de datos destino: ${describeTarget()}.`);
   const { db, close } = createScriptDb();
+  let started = false;
   try {
     // One transaction for the whole taxonomy: ~30 statements in autocommit
     // would leave the client's taxonomy half migrated if any of them failed.
     // It is opened here and not inside syncTaxonomy so T4 can roll the same
     // body back for --dry-run and T6 can upload photos outside of it.
+    //
+    // TRAP for T4/T5/T6: createScriptDb opens the client with `max: 1`, so the
+    // transaction holds the ONLY connection. Any query issued on the outer `db`
+    // handle while this is open waits for a connection that cannot be freed
+    // until the transaction ends: it hangs forever, with no error and no
+    // timeout. Inside here, always use `tx`.
     await db.transaction(async (tx) => {
+      started = true;
       await syncTaxonomy(tx);
     });
     console.log("[import-catalogo] Taxonomía sincronizada.");
+  } catch (error) {
+    // The log above lists writes that no longer exist. Say so: an operator
+    // reading a failed production run has to know whether the rename stuck.
+    if (started) {
+      console.error(
+        "[import-catalogo] La transacción se revirtió: la base quedó como estaba antes de esta corrida.",
+      );
+    }
+    throw error;
   } finally {
     await close();
   }
