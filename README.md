@@ -169,39 +169,53 @@ npm run db:import-catalogo -- --dry-run
 
 El `--` no es decoración: sin él npm se come el flag y arranca la corrida real.
 
-**Leer la salida del simulacro entera antes de seguir.** Y leerla sabiendo qué esperar: la instancia del cliente **no** es una base limpia. Trae la taxonomía sembrada el 19/08 (6 categorías en singular — `Mate`, `Bombilla`, `Termo`, `Matera`, `Yerba`, `Accesorios` — con 23 subtipos), así que el simulacro no imprime "4 categorías creadas con 12 subtipos": imprime renombres, una sola creación y un montón de desactivaciones.
+**Leer la salida del simulacro entera antes de seguir.** Y leerla sabiendo qué esperar: la instancia del cliente **no** es una base limpia. Trae la taxonomía sembrada el 19/08: 6 categorías (`Mate`, `Bombilla`, `Termo`, `Matera`, `Yerba`, `Accesorios`) y 23 subtipos, con las dos primeras en singular donde el catálogo nuevo las quiere en plural y `Accesorios` ya con el nombre definitivo. Así que el simulacro no imprime "4 categorías creadas con 12 subtipos": imprime renombres, una sola creación y un montón de desactivaciones.
 
-Estos son los números exactos que tiene que dar. La columna de la derecha es la de una base limpia, que es lo que se ve en un ensayo y **no** lo que va a ver el operador acá:
+Estos son los números exactos que tiene que dar, según en qué estado esté la base. La primera columna de números es la que corresponde a la instancia del cliente hoy; la última es la de una base limpia, que es lo que se ve en un ensayo y **no** lo que el operador va a leer acá:
 
-| Líneas del simulacro | Instancia del cliente | Base limpia (ensayo) |
-|---|---|---|
-| `Categoría "X" renombrada a "Y"` | **2**: `Mate`→`Mates`, `Bombilla`→`Bombillas` | 0 |
-| `Categoría "X" creada (slug …)` | **1**: `Combos` | 4 |
-| `Categoría "X" desactivada` | **3**: `Termo`, `Yerba`, `Matera` | 0, con el aviso `no existe; nada que desactivar` |
-| `Subtipo "X" creado bajo "Y" (slug …)` | **11** | 12 |
-| `Subtipo "X" desactivado bajo "Y"` | **13** | 0 |
-| `Producto "X" creado (slug …)` | **34** | 34 |
-| Resumen | `categorías tocadas 7; productos creados 34, salteados 0` | `tocadas 4; creados 34, salteados 0` |
+| Líneas del simulacro | Primera corrida (instancia del cliente) | Re-corrida (el import ya entró) | Base limpia (ensayo) |
+|---|---|---|---|
+| `Categoría "X" renombrada a "Y"` | **2**: `Mate`→`Mates`, `Bombilla`→`Bombillas` | 0 | 0 |
+| `Categoría "X" creada (slug …)` | **1**: `Combos` | 0 | 4 |
+| `Categoría "X" desactivada` | **3**: `Termo`, `Yerba`, `Matera` | 0 | 0, con el aviso `no existe; nada que desactivar` |
+| `Subtipo "X" creado bajo "Y" (slug …)` | **11** | 0 | 12 |
+| `Subtipo "X" desactivado bajo "Y"` | **13** | 0 | 0 |
+| `Producto "X" creado (slug …)` | **34** | 0 | 34 |
+| `Producto "X" ya existe; se deja como está.` | 0 | **34** | 0 |
+| Resumen | `categorías tocadas 7; productos creados 34, salteados 0; fotos subidas 0, salteadas 0` | `tocadas 0; creados 0, salteados 34` | `tocadas 4; creados 34, salteados 0` |
 
-Más tres líneas que no dependen del estado de la base:
+**La columna de la re-corrida no es un fallo.** Si el import ya entró — entero, o hasta antes de las fotos — el simulacro no imprime una sola línea de taxonomía y lista los 34 productos como `ya existe`. Y esa columna es, además, el procedimiento concreto para lo que pide el mensaje `No se confirmó la transacción` cuando una corrida muere sin confirmar: corré el simulacro y mirá los productos. `creados 34` quiere decir que el COMMIT no entró; `salteados 34`, que sí entró y lo que falta son las fotos.
 
-- La primera nombra la base destino (host, nombre y proyecto de Supabase). Si no es la del cliente, `DATABASE_URL` está apuntando a otro lado.
+Más las líneas que no dependen del estado de la base: las cuatro del encabezado, en este orden, y las del cierre.
+
+- `Base de datos destino: …` — host, nombre y proyecto de Supabase. Si no es la del cliente, `DATABASE_URL` está apuntando a otro lado.
+- `Demo del cliente (solo lectura): …` — la carpeta de donde salen las fotos. El script nunca escribe adentro.
+- `Prefijo de las rutas del bucket: (ninguno)` — **contra producción tiene que decir `(ninguno)`.** Si dice cualquier otra cosa, alguien pasó `--path-prefix`, y eso no va contra la base del cliente (ver "Si falla la fase de fotos").
 - `Catálogo: 34 productos leídos de scripts/data/catalogo-unamargo.json.`
+- `Transacción revertida a propósito: la base quedó exactamente como estaba.` — la confirmación de que el simulacro no escribió. En la corrida real, esta línea es `Cambios confirmados en la base.`
 - `El catálogo referencia 42 archivos y los 42 están en la demo.` Si falta uno, el script lo nombra y no escribe nada.
 
 **Lo que NO va a estar, y está bien:**
 
 - **Ninguna línea de `Accesorios` como categoría creada ni renombrada.** Ya existe con ese nombre y ese slug, y el sync no escribe lo que ya está bien: **silencio quiere decir que estaba correcto**. Aparece una sola vez, en el renumerado (`Categoría "Accesorios" ordenada en 4.`).
 - **11 subtipos creados y no 12**, por lo mismo: `Limpieza` ya existe bajo `Accesorios` y se reusa en vez de duplicarse.
-- Las líneas `ordenado en N` / `ordenada en N` (13 en esta corrida) no cambian contenido: reacomodan en qué orden se listan las categorías y los subtipos, dejando 1..N para los que el catálogo declara y el resto detrás.
+- Las líneas `ordenado en N` / `ordenada en N` (13 en la primera corrida, ninguna en una re-corrida) no cambian contenido: reacomodan en qué orden se listan las categorías y los subtipos, dejando 1..N para los que el catálogo declara y el resto detrás.
 
 **Lo que tiene que frenar la corrida:**
 
-- **Cualquier categoría o subtipo creado con slug terminado en `-2`, `-3`, etc.** Las tres líneas de creación — categoría, subtipo y producto — imprimen el slug entre paréntesis, así que alcanza con leerlas. Un slug con sufijo significa que la taxonomía se corrió de lugar: alguien renombró una categoría o un subtipo desde el ERP, que a propósito **no** cambia el slug, y el nombre viejo quedó dueño de la dirección. Seguir crearía una categoría duplicada, con el nombre que el cliente conoce, y los productos adentro de la que no ve.
+- **Cualquier categoría o subtipo creado con slug terminado en `-2`, `-3`, etc.** Las tres líneas de creación — categoría, subtipo y producto — imprimen el slug entre paréntesis, así que el sufijo se ve leyéndolas (no hace falta consultar la base, y en un simulacro tampoco se podría: la transacción se revierte). Un slug con sufijo significa que la taxonomía se corrió de lugar: alguien renombró una categoría o un subtipo desde el ERP, que a propósito **no** cambia el slug, y el nombre viejo quedó dueño de la dirección. Seguir crearía una categoría duplicada, con el nombre que el cliente conoce, y los productos adentro de la que no ve.
 
-  **Esta deriva es asimétrica, y por eso el chequeo del slug importa tanto:** `Mates` y `Bombillas` están protegidas por la guarda de slug de los renombres y **abortan ruidoso** (`el slug "mates" ya lo usa la categoría "…"`); `Combos` y `Accesorios` no tienen esa guarda, **crean el duplicado con slug `-2` y la corrida sale con 0 como si todo hubiera ido bien**. El chequeo del slug es lo único que atrapa esa mitad silenciosa. Se arregla desde Configuración — liberando el slug o unificando las dos filas — y recién ahí se vuelve a correr.
+  Se arregla desde Configuración — liberando el slug o unificando las dos filas — y recién ahí se vuelve a correr.
 
-- **Cualquier número de la tabla que no coincida.** Si el simulacro creó categorías que esperabas ver renombradas, o desactivó menos de 3, la taxonomía cambió desde el 19/08 y hay que mirar Configuración antes de seguir. El simulacro no escribió nada, así que no hay apuro.
+  **Ojo con qué red atrapa cada caso, porque no es una sola.** Un renombre desde Configuración cambia la etiqueta y a propósito **no** el slug, y de ahí salen tres comportamientos distintos:
+
+  1. Renombraron una categoría cuyo nombre el catálogo ya usa (`Combos`, `Accesorios`): la fila vieja se queda con el slug bueno, la nueva nace con `-2` (`Categoría "Accesorios" creada (slug "accesorios-2").`) y la corrida sale con 0. **Lo atrapa el chequeo del slug.**
+  2. Renombraron `Mate` o `Bombilla`, que el catálogo quiere en plural: el slug destino (`mates`, `bombillas`) queda libre, así que la categoría nueva nace **con slug limpio, sin `ERROR:` y sin `-N`**, y la corrida sale con 0 igual. El cliente termina con dos categorías y los productos en la que no conoce. **Acá el chequeo del slug no ve nada: lo único que lo atrapa es la tabla de conteos** — los renombres darían 1 en vez de 2 y las creadas 2 en vez de 1.
+  3. El renombre pasó **después** de que el import ya corrió (la fila ya se llama `Mates` y tiene el slug `mates`): recién ahí salta la guarda de `applyRenames` y la corrida **aborta ruidoso**, `el slug "mates" ya lo usa la categoría "…"`, sin escribir nada.
+
+  O sea: el slug atrapa el caso 1, los conteos atrapan el caso 2 y el caso 3 se corta solo. Ninguna de las dos lecturas sobra.
+
+- **Cualquier número de la tabla que no coincida con su columna.** Si el simulacro creó categorías que esperabas ver renombradas, o desactivó menos de 3, la taxonomía cambió desde el 19/08 y hay que mirar Configuración antes de seguir. Compará siempre contra la columna que corresponde: la de la re-corrida es toda ceros y 34 `ya existe`, y eso está bien. El simulacro no escribió nada, así que no hay apuro.
 - **Cualquier línea `ERROR:`.** Las ambigüedades que el script no puede resolver solo — dos filas que difieren únicamente en mayúsculas o acentos, un slug ocupado, la categoría vieja y la nueva conviviendo — cortan la corrida con un mensaje en español que dice qué arreglar. Ninguno de esos casos escribe nada.
 
 ```bash
