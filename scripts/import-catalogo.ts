@@ -9,24 +9,30 @@
  * announces its target database (host and name, never credentials) on the first
  * line, so the operator can see which one is about to change.
  *
- * Parts 1 and 2 (taxonomy and the command line). Tasks 5 and 6 (see
- * .superpowers/sdd/2026-08-20-import-catalogo) extend this same file with the
- * product import and the photo upload.
+ * Parts 1 to 3 (taxonomy, the command line and the products). Task 6 (see
+ * .superpowers/sdd/2026-08-20-import-catalogo) extends this same file with the
+ * photo upload.
  *
- * This step reconciles the product taxonomy seeded on 2026-08-19 -- inferred
- * from demo fixtures -- against the real range the client's own HTML demo
- * revealed. Categories and subtypes are NEVER deleted here, only deactivated
- * (the rule everywhere in this ERP): history and any future reactivation
- * both depend on the row surviving.
+ * The taxonomy step reconciles the product taxonomy seeded on 2026-08-19 --
+ * inferred from demo fixtures -- against the real range the client's own HTML
+ * demo revealed. Categories and subtypes are NEVER deleted here, only
+ * deactivated (the rule everywhere in this ERP): history and any future
+ * reactivation both depend on the row surviving.
+ *
+ * The product step then creates the 34 products of
+ * scripts/data/catalogo-unamargo.json under that taxonomy, with stock 0 and no
+ * ledger movement, and never touches a SKU that is already in the database.
  */
-import { statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
-import { eq, sql } from "drizzle-orm";
+import { count, eq, inArray, sql } from "drizzle-orm";
+import { z } from "zod";
 import { PRODUCT_LIMIT_LOCK } from "@/lib/db/locks";
 import { slugify, uniqueSlug } from "@/lib/domain/slug";
+import { MAX_ACTIVE_PRODUCTS } from "@/lib/domain/stock";
 import { createScriptDb, schema } from "./lib/db";
 
-const { productCategories, productSubtypes } = schema;
+const { productCategories, productSubtypes, products } = schema;
 
 type Db = ReturnType<typeof createScriptDb>["db"];
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -505,6 +511,295 @@ export async function syncTaxonomy(
   return { categoriesTouched: touched.size };
 }
 
+// --- Product import ----------------------------------------------------------
+
+/**
+ * The catalog scripts/extract-demo-catalog.ts pulled out of the client's demo,
+ * versioned beside this file. Read relative to the repo root, like
+ * scripts/seed.ts reads config/instance.json: `npm run` sets the cwd there, and
+ * the header of this file already requires going through the npm script.
+ */
+const CATALOG_PATH = "scripts/data/catalogo-unamargo.json";
+
+/**
+ * The JSON is generated and versioned, so this is not defending against a
+ * hostile file: it is what turns a drift between the extractor and this import
+ * into one legible line instead of a constraint violation twenty products in.
+ * The limits are the ones the app validates its own products with
+ * (src/lib/domain/stock.ts) -- what this writes has to be what the ERP would
+ * have accepted -- and unknown keys (`merges`) are ignored on purpose: they
+ * document the extraction, they are not input for the import.
+ */
+const catalogSchema = z.object({
+  generatedFrom: z.string().min(1),
+  products: z
+    .array(
+      z.object({
+        sku: z.string().regex(/^[A-Z0-9_-]{1,40}$/),
+        name: z.string().trim().min(1).max(120),
+        category: z.string().min(1),
+        // null, not absent, for the products whose category has no subtypes or
+        // whose name names no shape.
+        subtype: z.string().min(1).nullable(),
+        // A decimal STRING all the way to Postgres, never a float: `price` is
+        // numeric(12,2) and the round trip through a double is exactly how a
+        // price the client set by hand comes back a cent short.
+        price: z.string().regex(/^\d{1,10}\.\d{2}$/),
+        description: z.string(),
+        images: z.array(z.string()),
+      }),
+    )
+    .min(1),
+});
+
+/** One product as the extractor left it. Task 6 reads `images` off these same
+ * entries, outside the transaction. */
+export type CatalogEntry = z.infer<typeof catalogSchema>["products"][number];
+
+export function loadCatalog(): CatalogEntry[] {
+  const file = path.resolve(CATALOG_PATH);
+  let raw: unknown;
+  try {
+    raw = JSON.parse(readFileSync(file, "utf8"));
+  } catch (error) {
+    throw new ImportError(
+      `no se pudo leer el catálogo ${file}: ` +
+        `${error instanceof Error ? error.message : String(error)}. ` +
+        `Corré el import desde la raíz del repo con npm run db:import-catalogo.`,
+    );
+  }
+
+  const parsed = catalogSchema.safeParse(raw);
+  if (!parsed.success) {
+    const [issue] = parsed.error.issues;
+    const where = issue.path.length > 0 ? issue.path.join(".") : "(raíz)";
+    throw new ImportError(
+      `el catálogo ${file} no tiene la forma esperada: ${where}: ${issue.message}. ` +
+        `Regeneralo con npx tsx scripts/extract-demo-catalog.ts.`,
+    );
+  }
+
+  // The SKU is the key this import is idempotent by: repeated in the file, the
+  // second copy would be counted as "already existed" and the operator would
+  // read a skip where the catalog has a bug.
+  const seen = new Set<string>();
+  for (const entry of parsed.data.products) {
+    if (seen.has(entry.sku)) {
+      throw new ImportError(
+        `el catálogo ${file} trae el SKU "${entry.sku}" repetido. ` +
+          `Regeneralo con npx tsx scripts/extract-demo-catalog.ts.`,
+      );
+    }
+    seen.add(entry.sku);
+  }
+  return parsed.data.products;
+}
+
+/** An entry with its taxonomy already resolved to ids that exist. */
+type ClassifiedEntry = CatalogEntry & {
+  categoryId: string;
+  subtypeId: string | null;
+};
+
+/**
+ * Turns the names the catalog carries into the ids the taxonomy sync just wrote
+ * IN THIS SAME TRANSACTION -- read, never assumed, because a hardcoded id would
+ * be wrong on any database but the one it was copied from.
+ *
+ * Every entry is resolved BEFORE the first product is inserted: a catalog that
+ * has drifted away from TAXONOMY fails as one message about the name that is
+ * missing, instead of a log listing twelve products created and then an error.
+ *
+ * A subtype is looked up WITHIN its category. That is also what the composite
+ * foreign key on (subtype_id, category_id) enforces, so getting it wrong here
+ * would not corrupt anything -- it would abort the transaction with a
+ * constraint name, which tells the operator nothing.
+ */
+async function classifyEntries(
+  db: Executor,
+  entries: CatalogEntry[],
+): Promise<ClassifiedEntry[]> {
+  const categories = await fetchCategories(db);
+  // One read per category, not one per product.
+  const subtypesByCategory = new Map<string, SubtypeRow[]>();
+  const classified: ClassifiedEntry[] = [];
+
+  for (const entry of entries) {
+    const category = matchByName(
+      categories,
+      entry.category,
+      (near) =>
+        `el producto "${entry.sku}" declara la categoría "${entry.category}" y en la base está como "${near.name}", ` +
+        `que difiere solo por mayúsculas o acentos. Corregila desde Configuración y volvé a correr el import.`,
+    );
+    if (!category) {
+      throw new ImportError(
+        `el producto "${entry.sku}" declara la categoría "${entry.category}", que no existe en la base. ` +
+          `El catálogo y la taxonomía de este script se separaron: revisá TAXONOMY o regenerá el catálogo.`,
+      );
+    }
+    // Resolving to a deactivated category would create products the client's
+    // site never shows, and say nothing about it: the same drift, one step
+    // further along.
+    if (!category.isActive) {
+      throw new ImportError(
+        `el producto "${entry.sku}" cuelga de la categoría "${category.name}", que está desactivada. ` +
+          `El catálogo y la taxonomía de este script se separaron: revisá TAXONOMY o regenerá el catálogo.`,
+      );
+    }
+
+    // Bound to a local so the narrowing survives into the callback below: a
+    // property is widened back to `string | null` inside a closure.
+    const subtypeName = entry.subtype;
+    let subtypeId: string | null = null;
+    if (subtypeName !== null) {
+      let subtypes = subtypesByCategory.get(category.id);
+      if (!subtypes) {
+        subtypes = await fetchSubtypes(db, category.id);
+        subtypesByCategory.set(category.id, subtypes);
+      }
+      const subtype = matchByName(
+        subtypes,
+        subtypeName,
+        (near) =>
+          `el producto "${entry.sku}" declara el subtipo "${subtypeName}" de "${category.name}" y en la base está como "${near.name}", ` +
+          `que difiere solo por mayúsculas o acentos. Corregilo desde Configuración y volvé a correr el import.`,
+      );
+      if (!subtype) {
+        throw new ImportError(
+          `el producto "${entry.sku}" declara el subtipo "${subtypeName}", que no existe bajo "${category.name}". ` +
+            `El catálogo y la taxonomía de este script se separaron: revisá TAXONOMY o regenerá el catálogo.`,
+        );
+      }
+      if (!subtype.isActive) {
+        throw new ImportError(
+          `el producto "${entry.sku}" cuelga del subtipo "${subtype.name}" de "${category.name}", que está desactivado. ` +
+            `El catálogo y la taxonomía de este script se separaron: revisá TAXONOMY o regenerá el catálogo.`,
+        );
+      }
+      subtypeId = subtype.id;
+    }
+
+    classified.push({ ...entry, categoryId: category.id, subtypeId });
+  }
+  return classified;
+}
+
+/**
+ * Creates the catalog's products, and never touches one that is already there:
+ * an existing SKU is left exactly as it is -- name, price, description and all
+ * -- and counted as skipped. That is what makes the whole script safe to run
+ * twice, and it is also the honest behaviour: this import has no way of knowing
+ * whether the client edited that product from the ERP after the last run.
+ *
+ * Runs on the transaction handle the runner passes in, under the advisory lock
+ * that transaction already took (see main()). It must NOT take it again.
+ */
+export async function importProducts(
+  db: Executor,
+  entries: CatalogEntry[],
+): Promise<{ created: number; skipped: number }> {
+  const classified = await classifyEntries(db, entries);
+
+  const existing = new Set(
+    (
+      await db
+        .select({ sku: products.sku })
+        .from(products)
+        .where(
+          inArray(
+            products.sku,
+            entries.map((entry) => entry.sku),
+          ),
+        )
+    ).map((row) => row.sku),
+  );
+
+  // Checked BEFORE the first insert, not discovered halfway: on the client's
+  // empty database 34 products fit with room to spare, but if someone had
+  // already loaded a catalog by hand, hitting the cap at product 118 would
+  // leave the operator with a rolled-back transaction and no idea why.
+  const [{ active }] = await db
+    .select({ active: count() })
+    .from(products)
+    .where(eq(products.isActive, true));
+  const toCreate = classified.filter(
+    (entry) => !existing.has(entry.sku),
+  ).length;
+  if (active + toCreate > MAX_ACTIVE_PRODUCTS) {
+    throw new ImportError(
+      `el catálogo agrega ${toCreate} productos a los ${active} activos que ya hay y el tope es ${MAX_ACTIVE_PRODUCTS}. ` +
+        `Desactivá productos desde Stock antes de correr el import.`,
+    );
+  }
+
+  // Without a slug the client's site cannot link the product. The ones already
+  // taken are collected ONCE and accumulated into the set, so two products of
+  // the same catalog can never pick the same one (the idiom in
+  // src/lib/import-runner.ts, and the reason it is a set and not a re-query).
+  const slugsUsados = new Set(
+    (await db.select({ slug: products.slug }).from(products))
+      .map((row) => row.slug)
+      .filter((slug): slug is string => slug !== null),
+  );
+
+  let created = 0;
+  let skipped = 0;
+
+  for (const entry of classified) {
+    if (existing.has(entry.sku)) {
+      skipped++;
+      log(`Producto "${entry.sku}" ya existe; se deja como está.`);
+      continue;
+    }
+
+    const slug = uniqueSlug(slugify(entry.name) || "producto", slugsUsados);
+    slugsUsados.add(slug);
+
+    const [row] = await db
+      .insert(products)
+      .values({
+        sku: entry.sku,
+        name: entry.name,
+        categoryId: entry.categoryId,
+        subtypeId: entry.subtypeId,
+        price: entry.price,
+        description: entry.description,
+        // Stock 0 and minimum 0. The real quantities are loaded by the client
+        // from the ERP, which is what puts them in the ledger with an author,
+        // and that is also why NO row goes into stock_movements here: with
+        // stock 0 there is nothing to record, the ledger is append-only, and a
+        // product with no movements keeps its SKU editable -- these SKUs were
+        // derived from a demo and the client may well change them before going
+        // live. A minimum of 0 additionally leaves alerts off
+        // (src/lib/alerts.ts), so importing the catalog fires no breach
+        // notices.
+        currentStock: 0,
+        minStock: 0,
+        slug,
+      })
+      .onConflictDoNothing({ target: products.sku })
+      .returning({ id: products.id });
+
+    if (!row) {
+      // The lock serializes imports, but it does not stop somebody creating
+      // this SKU by hand from the ERP between the read above and this insert.
+      // Skip it and say so: aborting would take down the other 33 that were
+      // perfectly fine.
+      skipped++;
+      warn(
+        `Producto "${entry.sku}" apareció en la base durante la corrida; se deja como está.`,
+      );
+      continue;
+    }
+
+    created++;
+    log(`Producto "${entry.sku}" creado (slug "${slug}").`);
+  }
+
+  return { created, skipped };
+}
+
 // --- Command line ------------------------------------------------------------
 
 /**
@@ -694,7 +989,7 @@ type ImportSummary = {
    * syncTaxonomy (Task 3). */
   categoriesTouched: number;
   /** Products inserted, and products left alone because their SKU was already
-   * in the database. Filled by Task 5; honest zeros until then. */
+   * in the database. Filled by importProducts. */
   productsCreated: number;
   productsSkipped: number;
   /** Photos uploaded and linked, and photos not uploaded because the product
@@ -773,6 +1068,12 @@ async function main(): Promise<void> {
     }`,
   );
 
+  // Read before the connection is opened: a catalog that does not parse is not
+  // worth a transaction, and the failure is the operator's to fix on disk.
+  // Task 6 uploads the photos of these same entries, outside the transaction.
+  const entries = loadCatalog();
+  log(`Catálogo: ${entries.length} productos leídos de ${CATALOG_PATH}.`);
+
   const summary: ImportSummary = { ...EMPTY_SUMMARY };
   const { db, close } = createScriptDb();
   let started = false;
@@ -808,8 +1109,14 @@ async function main(): Promise<void> {
 
         const taxonomy = await syncTaxonomy(tx);
         summary.categoriesTouched = taxonomy.categoriesTouched;
-        // T5 inserts the products HERE, on `tx` and never on `db`, adds its
-        // counts to `summary`, and relies on the lock taken above.
+
+        // On `tx` and never on `db`: the pool is `max: 1`, so a query on the
+        // outer handle would wait forever for the connection this transaction
+        // is holding. The 150-active cap it checks rides on the advisory lock
+        // taken above; it does not take one of its own.
+        const imported = await importProducts(tx, entries);
+        summary.productsCreated = imported.created;
+        summary.productsSkipped = imported.skipped;
 
         // --dry-run has no separate "what it would do" branch, which would
         // drift from the real one the first time somebody edited only half of
