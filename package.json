@@ -14,7 +14,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx --env-file-if-exists=.env scripts/seed.ts",
     "db:check": "tsx --env-file-if-exists=.env scripts/check-integrity.ts",
-    "user:create": "tsx --env-file-if-exists=.env scripts/create-user.ts"
+    "user:create": "tsx --env-file-if-exists=.env scripts/create-user.ts",
+    "db:import-catalogo": "tsx --env-file-if-exists=.env scripts/import-catalogo.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",

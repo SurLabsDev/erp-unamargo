@@ -59,6 +59,7 @@ Credenciales demo (solo desarrollo; impresas también por el seed):
 | `npm run db:seed -- --demo [--reset]` | Seed demo Unamargo (`--reset` borra todo antes; solo dev) |
 | `npm run db:check` | Verifica el invariante de stock (cache == Σ ledger) |
 | `npm run user:create -- --email … --name "…" --role admin\|operator` | Alta de usuario por CLI |
+| `npm run db:import-catalogo -- [--dry-run]` | Carga el catálogo inicial desde `scripts/data/catalogo-unamargo.json`: taxonomía, productos y fotos. Idempotente (ver [Carga del catálogo inicial](#carga-del-catálogo-inicial)) |
 
 ## Variables de entorno
 
@@ -143,6 +144,99 @@ El seed imprime **una única vez** la contraseña temporal del admin inicial: gu
 - [ ] Borrar el producto de prueba no existe como opción: desactivarlo (correcto — el historial se conserva).
 - [ ] `npm run db:check` contra la base productiva pasa.
 - [ ] Anotar el connection string directo y agendar el primer backup (ver abajo).
+
+## Carga del catálogo inicial
+
+`npm run db:import-catalogo` es el runner **de una sola vez** que sube a la instancia el catálogo real del cliente que hoy vive en `scripts/data/catalogo-unamargo.json` (34 productos, 42 fotos). Hace tres cosas, en este orden:
+
+1. **Taxonomía**: deja las categorías y subtipos que el catálogo declara, renombra las que quedaron en singular del seed anterior y **desactiva** (nunca borra) las que ya no se venden.
+2. **Productos**: crea los que falten, con **stock 0 y sin movimientos**, y no toca ningún SKU que ya esté en la base.
+3. **Fotos**: sube las imágenes al bucket `productos` y las enlaza.
+
+Los pasos 1 y 2 van en **una sola transacción**; el 3 corre **después del commit**, porque un POST HTTP no tiene rollback.
+
+Es **idempotente**: correrlo dos veces no duplica nada. Un producto que ya existe se saltea, y un producto que ya tiene fotos se saltea entero (no se le agregan las que falten: si el cliente borró una desde Stock, volver a subirla sería deshacer su decisión).
+
+### Cómo correrlo contra producción
+
+```bash
+# 1. Backup ANTES de tocar nada. La transacción cubre la base, pero no el bucket.
+./scripts/backup.sh
+
+# 2. Simulacro: corre todo, revierte la transacción y no sube una sola foto.
+npm run db:import-catalogo -- --dry-run
+```
+
+El `--` no es decoración: sin él npm se come el flag y arranca la corrida real.
+
+**Leer la salida del simulacro entera antes de seguir.** Y leerla sabiendo qué esperar: la instancia del cliente **no** es una base limpia. Trae la taxonomía sembrada el 19/08: 6 categorías (`Mate`, `Bombilla`, `Termo`, `Matera`, `Yerba`, `Accesorios`) y 23 subtipos, con las dos primeras en singular donde el catálogo nuevo las quiere en plural y `Accesorios` ya con el nombre definitivo. Así que el simulacro no imprime "4 categorías creadas con 12 subtipos": imprime renombres, una sola creación y un montón de desactivaciones.
+
+Estos son los números exactos que tiene que dar, según en qué estado esté la base. La primera columna de números es la que corresponde a la instancia del cliente hoy; la última es la de una base limpia, que es lo que se ve en un ensayo y **no** lo que el operador va a leer acá:
+
+| Líneas del simulacro | Primera corrida (instancia del cliente) | Re-corrida (el import ya entró) | Base limpia (ensayo) |
+|---|---|---|---|
+| `Categoría "X" renombrada a "Y"` | **2**: `Mate`→`Mates`, `Bombilla`→`Bombillas` | 0 | 0 |
+| `Categoría "X" creada (slug …)` | **1**: `Combos` | 0 | 4 |
+| `Categoría "X" desactivada` | **3**: `Termo`, `Yerba`, `Matera` | 0 | 0, con el aviso `no existe; nada que desactivar` |
+| `Subtipo "X" creado bajo "Y" (slug …)` | **11** | 0 | 12 |
+| `Subtipo "X" desactivado bajo "Y"` | **13** | 0 | 0 |
+| `Producto "X" creado (slug …)` | **34** | 0 | 34 |
+| `Producto "X" ya existe; se deja como está.` | 0 | **34** | 0 |
+| Resumen | `categorías tocadas 7; productos creados 34, salteados 0; fotos subidas 0, salteadas 0` | `tocadas 0; creados 0, salteados 34` | `tocadas 4; creados 34, salteados 0` |
+
+**La columna de la re-corrida no es un fallo.** Si el import ya entró — entero, o hasta antes de las fotos — el simulacro no imprime una sola línea de taxonomía y lista los 34 productos como `ya existe`. Y esa columna es, además, el procedimiento concreto para lo que pide el mensaje `No se confirmó la transacción` cuando una corrida muere sin confirmar: corré el simulacro y mirá los productos. `creados 34` quiere decir que el COMMIT no entró; `salteados 34`, que sí entró y lo que falta son las fotos.
+
+Más las líneas que no dependen del estado de la base: las cuatro del encabezado, en este orden, y las del cierre.
+
+- `Base de datos destino: …` — host, nombre y proyecto de Supabase. Si no es la del cliente, `DATABASE_URL` está apuntando a otro lado.
+- `Demo del cliente (solo lectura): …` — la carpeta de donde salen las fotos. El script nunca escribe adentro.
+- `Prefijo de las rutas del bucket: (ninguno)` — **contra producción tiene que decir `(ninguno)`.** Si dice cualquier otra cosa, alguien pasó `--path-prefix`, y eso no va contra la base del cliente (ver "Si falla la fase de fotos").
+- `Catálogo: 34 productos leídos de scripts/data/catalogo-unamargo.json.`
+- `Transacción revertida a propósito: la base quedó exactamente como estaba.` — la confirmación de que el simulacro no escribió. En la corrida real, esta línea es `Cambios confirmados en la base.`
+- `El catálogo referencia 42 archivos y los 42 están en la demo.` Si falta uno, el script lo nombra y no escribe nada.
+
+**Lo que NO va a estar, y está bien:**
+
+- **Ninguna línea de `Accesorios` como categoría creada ni renombrada.** Ya existe con ese nombre y ese slug, y el sync no escribe lo que ya está bien: **silencio quiere decir que estaba correcto**. Aparece una sola vez, en el renumerado (`Categoría "Accesorios" ordenada en 4.`).
+- **11 subtipos creados y no 12**, por lo mismo: `Limpieza` ya existe bajo `Accesorios` y se reusa en vez de duplicarse.
+- Las líneas `ordenado en N` / `ordenada en N` (13 en la primera corrida, ninguna en una re-corrida) no cambian contenido: reacomodan en qué orden se listan las categorías y los subtipos, dejando 1..N para los que el catálogo declara y el resto detrás.
+
+**Lo que tiene que frenar la corrida:**
+
+- **Cualquier categoría o subtipo creado con slug terminado en `-2`, `-3`, etc.** Las tres líneas de creación — categoría, subtipo y producto — imprimen el slug entre paréntesis, así que el sufijo se ve leyéndolas (no hace falta consultar la base, y en un simulacro tampoco se podría: la transacción se revierte). Un slug con sufijo significa que la taxonomía se corrió de lugar: alguien renombró una categoría o un subtipo desde el ERP, que a propósito **no** cambia el slug, y el nombre viejo quedó dueño de la dirección. Seguir crearía una categoría duplicada, con el nombre que el cliente conoce, y los productos adentro de la que no ve.
+
+  Se arregla desde Configuración — liberando el slug o unificando las dos filas — y recién ahí se vuelve a correr.
+
+  **Ojo con qué red atrapa cada caso, porque no es una sola.** Un renombre desde Configuración cambia la etiqueta y a propósito **no** el slug, y de ahí salen tres comportamientos distintos:
+
+  1. Renombraron una categoría cuyo nombre el catálogo ya usa (`Combos`, `Accesorios`): la fila vieja se queda con el slug bueno, la nueva nace con `-2` (`Categoría "Accesorios" creada (slug "accesorios-2").`) y la corrida sale con 0. **Lo atrapa el chequeo del slug.**
+  2. Renombraron `Mate` o `Bombilla`, que el catálogo quiere en plural: el slug destino (`mates`, `bombillas`) queda libre, así que la categoría nueva nace **con slug limpio, sin `ERROR:` y sin `-N`**, y la corrida sale con 0 igual. El cliente termina con dos categorías y los productos en la que no conoce. **Acá el chequeo del slug no ve nada: lo único que lo atrapa es la tabla de conteos** — los renombres darían 1 en vez de 2 y las creadas 2 en vez de 1.
+  3. El renombre pasó **después** de que el import ya corrió (la fila ya se llama `Mates` y tiene el slug `mates`): recién ahí salta la guarda de `applyRenames` y la corrida **aborta ruidoso**, `el slug "mates" ya lo usa la categoría "…"`, sin escribir nada.
+
+  O sea: el slug atrapa el caso 1, los conteos atrapan el caso 2 y el caso 3 se corta solo. Ninguna de las dos lecturas sobra.
+
+- **Cualquier número de la tabla que no coincida con su columna.** Si el simulacro creó categorías que esperabas ver renombradas, o desactivó menos de 3, la taxonomía cambió desde el 19/08 y hay que mirar Configuración antes de seguir. Compará siempre contra la columna que corresponde: la de la re-corrida es toda ceros y 34 `ya existe`, y eso está bien. El simulacro no escribió nada, así que no hay apuro.
+- **Cualquier línea `ERROR:`.** Las ambigüedades que el script no puede resolver solo — dos filas que difieren únicamente en mayúsculas o acentos, un slug ocupado, la categoría vieja y la nueva conviviendo — cortan la corrida con un mensaje en español que dice qué arreglar. Ninguno de esos casos escribe nada.
+
+```bash
+# 3. Corrida real, con la salida guardada: es larga y es el único registro de qué subió.
+npm run db:import-catalogo 2>&1 | tee ~/import-catalogo-$(date +%Y%m%d-%H%M).log
+```
+
+Al terminar: `npm run db:check` (tiene que pasar), `curl https://<instancia>/api/public/v1/stock` (los 34 con precio, descripción, categoría y fotos) y abrir dos o tres fichas en Stock para ver las imágenes servidas de verdad.
+
+### Si falla la fase de fotos
+
+Es la única que puede dejar cosas a medias, porque el bucket no revierte. Lo que el script garantiza:
+
+- Un producto se sube **entero o nada**: primero van todos sus archivos y recién después sus filas de `product_images`, en un solo INSERT. Nunca queda una fila apuntando a un objeto que no está (eso sería una imagen rota en la web del cliente).
+- Si la corrida se cae ahí, **buscá la línea `Resumen hasta el fallo (esto quedó escrito)`**: trae los números reales, con los productos ya commiteados y las fotos contadas como **enlazadas**, no como subidas. No cuentes con que sea la última: el `ERROR:` sale después, y encima por stderr mientras el resumen sale por stdout, así que en el log armado con `tee` el orden entre las dos ni siquiera está garantizado.
+- El remedio es **volver a correrlo**: retoma por los productos sin fotos y saltea los que ya tienen. Lo que puede sobrar son objetos huérfanos en el bucket (subidos sin su fila), que no se ven en ningún lado y ocupan unos KB. Borrarlos es opcional y se hace desde el panel de Storage de Supabase.
+- **Lo que no tiene remedio automático es al revés: filas sin objeto.** `--path-prefix` solo cambia la clave del bucket, y esa clave queda guardada tal cual en `product_images.path`. Si alguien ensaya con `--path-prefix _prueba/` contra la base del cliente y después borra ese prefijo del bucket, quedan 42 filas apuntando a nada — imágenes rotas en la web — y ninguna corrida posterior lo arregla, porque esos productos "ya tienen fotos" y se saltean para siempre. La única salida es borrar esas filas a mano. Por eso: **`--path-prefix` nunca se combina con la base de producción.** Es exclusivamente para ensayos contra una base descartable.
+
+### Ensayos
+
+Para probar el runner sin tocar la instancia del cliente: un Postgres descartable con su propio `DATABASE_URL` **exportado** (el entorno le gana al `.env`, así que la corrida no se va a producción por accidente) y `--path-prefix _prueba/`, que mete todo bajo ese prefijo en el bucket para poder borrarlo después sin dudar de qué era de quién. **Las dos cosas van juntas o ninguna**: el prefijo contra la base del cliente deja filas apuntando a objetos que después se borran (ver arriba). Así se ensayó el runner de punta a punta el 20/08/2026 (base limpia, 34 productos, 42 fotos subidas, servidas y después borradas del bucket) antes de habilitarlo contra la instancia del cliente.
 
 ## Smoke checklist manual (QA completo)
 
