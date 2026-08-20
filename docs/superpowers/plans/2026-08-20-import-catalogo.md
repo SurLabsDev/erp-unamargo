@@ -331,7 +331,7 @@ git commit -m "feat: derivation rules for the demo catalog import"
 **Interfaces:**
 
 - Consumes: `buildSku`, `deriveSubtype`, `buildDescription`, `DemoCategory` de Task 1.
-- Produces: el archivo JSON con esta forma exacta, que Tasks 4 y 5 consumen:
+- Produces: el archivo JSON con esta forma exacta, que Tasks 5 y 6 consumen:
 
 ```ts
 type CatalogEntry = {
@@ -430,7 +430,7 @@ git commit -m "feat: extract the client demo catalog into a versioned JSON"
 
 **Files:**
 
-- Create: `scripts/import-catalogo.ts` (primera parte; Tasks 4 y 5 lo completan)
+- Create: `scripts/import-catalogo.ts` (primera parte; Tasks 5 y 6 lo completan)
 
 **Interfaces:**
 
@@ -504,7 +504,7 @@ git commit -m "feat: taxonomy sync for the catalog import"
 
 ---
 
-### Task 3b: Interfaz de línea de comandos del runner
+### Task 4: Interfaz de línea de comandos del runner
 
 **Files:**
 
@@ -538,7 +538,7 @@ git commit -m "feat: command line interface for the catalog import runner"
 
 ---
 
-### Task 4: Import de los productos
+### Task 5: Import de los productos
 
 **Files:**
 
@@ -593,7 +593,7 @@ git commit -m "feat: import the catalog products"
 
 ---
 
-### Task 5: Subida de las fotos
+### Task 6: Subida de las fotos
 
 **Files:**
 
@@ -652,7 +652,7 @@ git commit -m "feat: upload catalog product photos during the import"
 
 ---
 
-### Task 6: Ensayo completo y documentación
+### Task 7: Ensayo completo y documentación
 
 **Files:**
 
