@@ -382,7 +382,11 @@ async function syncSubtypes(
         sortOrder: index + 1,
       });
       touched.add(categoryName);
-      log(`Subtipo "${name}" creado bajo "${categoryName}".`);
+      // The slug goes in the line, like the category and product ones: a slug
+      // that came out as "ranchero-2" is how the operator sees that this
+      // category already holds that address under another name, and reading it
+      // in the --dry-run is the last chance to stop before the duplicate is real.
+      log(`Subtipo "${name}" creado bajo "${categoryName}" (slug "${slug}").`);
       continue;
     }
     if (!current.isActive) {
@@ -904,8 +908,6 @@ type ImageFile = {
   /** Extension without the dot, lower case. The bucket key keeps it. */
   ext: string;
   contentType: string;
-  /** Bytes on disk, checked against the bucket's own limit before uploading. */
-  size: number;
 };
 
 /**
@@ -916,8 +918,10 @@ type ImageFile = {
  * tried and the one that opened is the one that gets read later.
  * (`bombillón recto premium dorado frente.jpg` is exactly this case.)
  *
- * Returns the size along with the path: the `stat` is already paid for here, and
- * the size is what the bucket limit is checked against.
+ * Returns the size along with the path: the `stat` is already paid for here,
+ * and resolveImageFiles compares it against MAX_PHOTO_BYTES right below. It
+ * goes no further: ImageFile does not carry it, because nothing after that
+ * comparison ever asks how much a photo weighs.
  */
 function existingFile(file: string): { file: string; size: number } | null {
   for (const candidate of [
@@ -997,7 +1001,6 @@ function resolveImageFiles(
         file: found.file,
         ext: ext.slice(1),
         contentType,
-        size: found.size,
       });
     }
   }
