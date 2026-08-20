@@ -1,0 +1,404 @@
+{
+  "generatedFrom": "/Users/coru/Desktop/Proyectos/surlabs-prod/web-unamargo/claude code unamargo/index.html",
+  "merges": [
+    {
+      "dropped": "Camionero Pulido",
+      "keptInFavourOf": "Mate Camionero",
+      "reason": "Mismas 2 fotos y precios identicos (Clasico $490 / Pulido $690): es el mismo mate cargado dos veces."
+    },
+    {
+      "dropped": "Porongo Pulido",
+      "keptInFavourOf": "Porongo",
+      "reason": "Mismas 2 fotos. El precio del Clasico difiere ($450 vs $490): se toma el mayor, $490."
+    },
+    {
+      "dropped": "Combo Porongo Virola Chata + Posamate",
+      "keptInFavourOf": "Combo Porongo + Posamate",
+      "reason": "Foto compartida y mismo precio $990: ya existe como variante 'Virola Chata' del combo que se conserva."
+    }
+  ],
+  "products": [
+    {
+      "sku": "MATE-RANCHERO-ALGARROBO",
+      "name": "Mate Ranchero de Algarrobo",
+      "category": "Mates",
+      "subtype": "Ranchero",
+      "price": "1990.00",
+      "description": "El Mate Ranchero de Algarrobo es nuestra pieza estrella. Tallado en madera maciza de algarrobo, pintado y lijado a mano para lograr una terminación suave y uniforme. La combinación de la veta natural de la madera con el pintado exterior lo hace único en cada pieza. Liviano para el día a día, estable para que no se vuelque.\n\nMaterial: Madera de algarrobo\nTerminación: Pintado y lijado a mano\nCaracterísticas: Liviano · Estable\nCuidados: Secar boca abajo, evitar detergente y agua en remojo",
+      "images": [
+        "./images/Mate Algarrobo Ranchero frente.jpg",
+        "./images/algarrobo-ranchero-espalda.jpg",
+        "./images/ALGARROBO RANCHERO 3.jpg"
+      ]
+    },
+    {
+      "sku": "MATE-CAMIONERO-CLASICO",
+      "name": "Mate Camionero (Clásico)",
+      "category": "Mates",
+      "subtype": "Camionero",
+      "price": "490.00",
+      "description": "El Mate Camionero es la calabaza de toda la vida: boca ancha para un cebado fácil, liviano en la mano y con la forma redondeada que reconoce cualquier mateador. Sin agregados, sin vueltas.\n\nMaterial: Calabaza natural\nBoca: Ancha\nCaracterísticas: Liviano · Fácil de cebar\nCuidados: Secar boca abajo, evitar detergente",
+      "images": [
+        "./images/camionero-new.jpg"
+      ]
+    },
+    {
+      "sku": "MATE-CAMIONERO-PULIDO",
+      "name": "Mate Camionero (Pulido)",
+      "category": "Mates",
+      "subtype": "Camionero",
+      "price": "690.00",
+      "description": "El Mate Camionero es la calabaza de toda la vida: boca ancha para un cebado fácil, liviano en la mano y con la forma redondeada que reconoce cualquier mateador. Sin agregados, sin vueltas.\n\nMaterial: Calabaza natural\nBoca: Ancha\nCaracterísticas: Liviano · Fácil de cebar\nCuidados: Secar boca abajo, evitar detergente",
+      "images": [
+        "./images/camionero-pulido.jpg"
+      ]
+    },
+    {
+      "sku": "COMBO-GALLETA",
+      "name": "Combo Galleta",
+      "category": "Combos",
+      "subtype": "Con galleta",
+      "price": "1290.00",
+      "description": "El Combo Galleta reúne el mate galleta tradicional con un posamate de cuero crudo cosido a mano. Una combinación que tiene la textura y el carácter de lo artesanal en cada detalle. Ideal para regalar o para completar tu equipo.\n\nIncluye: Mate galleta + posamate\nPosamate: Cuero crudo con costura\nMate: Calabaza galleta\nHecho: A mano",
+      "images": [
+        "./images/combo-galleta-new.jpg"
+      ]
+    },
+    {
+      "sku": "MATE-TORPEDO-CUERO-VACA",
+      "name": "Torpedo de Cuero de Vaca",
+      "category": "Mates",
+      "subtype": "Torpedo",
+      "price": "2490.00",
+      "description": "El Torpedo de Cuero de Vaca es una pieza de trabajo real. El torpedo natural va recubierto con cuero de vaca cosido a mano, y remata con una virola de alpaca lacrada que le da el acabado que lo distingue. La virola tiene su trabajo propio: lijada, lacada y ajustada a mano. Cada pieza es única.\n\nMaterial: Torpedo + cuero de vaca\nVirola: Alpaca lacrada\nTerminación: Cuero cosido a mano\nCaracterísticas: Pieza única · Artesanal\nCuidados: Cuero: acondicionar con grasa natural. Virola: no sumergir en agua",
+      "images": [
+        "./images/torpedo-cuero-new.jpg"
+      ]
+    },
+    {
+      "sku": "ACC-MATERA-CANASTA-ECOCUERO",
+      "name": "Matera Canasta de Ecocuero",
+      "category": "Accesorios",
+      "subtype": "Materas",
+      "price": "1790.00",
+      "description": "La Matera Canasta de Ecocuero está hecha para el que se mueve con el mate encima. Ecocuero resistente, diseño canasta, espacio justo para termo, mate y bombilla. Simple, duradera, sin adornos.\n\nMaterial: Ecocuero\nIncluye: Espacio para termo + mate + bombilla\nDiseño: Canasta\nCuidados: Limpiar con paño húmedo",
+      "images": [
+        "./images/matera-canasta.jpg"
+      ]
+    },
+    {
+      "sku": "MATE-ALGARROBO-OSCURO",
+      "name": "Algarrobo Oscuro",
+      "category": "Mates",
+      "subtype": null,
+      "price": "1990.00",
+      "description": "El Algarrobo Oscuro lleva la misma madera de algarrobo del Ranchero pero con una terminación más oscura que resalta la veta natural. Lijado y pintado a mano, cada pieza tiene su propio dibujo.\n\nMaterial: Madera de algarrobo\nTerminación: Oscura, pintado y lijado a mano\nCuidados: Secar boca abajo, evitar detergente",
+      "images": [
+        "./images/algarrobo-brown.jpg"
+      ]
+    },
+    {
+      "sku": "MATE-IMPERIAL-ALGARROBO",
+      "name": "Imperial de Algarrobo",
+      "category": "Mates",
+      "subtype": "Imperial",
+      "price": "1990.00",
+      "description": "El Imperial de Algarrobo tiene la forma más amplia y la capacidad más generosa de la línea. Ideal para el cebado largo y pausado. Misma madera de algarrobo, mismo trabajo a mano.\n\nMaterial: Madera de algarrobo\nForma: Imperial (boca ancha)\nCuidados: Secar boca abajo, evitar detergente",
+      "images": [
+        "./images/imperial-algarrobo-new.jpg",
+        "./images/imperial-sin-base.jpg"
+      ]
+    },
+    {
+      "sku": "MATE-CAMIONERO-VIROLA-NEGRO",
+      "name": "Camionero Virola (Negro)",
+      "category": "Mates",
+      "subtype": "Camionero",
+      "price": "690.00",
+      "description": "El Camionero Virola es la versión con terminación de la calabaza clásica. La virola de alpaca en la boca protege el borde y le da un acabado limpio y duradero. Misma forma amplia y liviana del Camionero, con ese toque que lo distingue.\n\nMaterial: Calabaza + virola de alpaca\nBoca: Ancha\nCaracterísticas: Liviano · Boca ancha\nCuidados: Secar boca abajo, evitar detergente",
+      "images": [
+        "./images/camionero-virola-negro.jpg"
+      ]
+    },
+    {
+      "sku": "MATE-CAMIONERO-VIROLA-MARRON",
+      "name": "Camionero Virola (Marrón)",
+      "category": "Mates",
+      "subtype": "Camionero",
+      "price": "690.00",
+      "description": "El Camionero Virola es la versión con terminación de la calabaza clásica. La virola de alpaca en la boca protege el borde y le da un acabado limpio y duradero. Misma forma amplia y liviana del Camionero, con ese toque que lo distingue.\n\nMaterial: Calabaza + virola de alpaca\nBoca: Ancha\nCaracterísticas: Liviano · Boca ancha\nCuidados: Secar boca abajo, evitar detergente",
+      "images": [
+        "./images/camionero-virola-marron.jpg"
+      ]
+    },
+    {
+      "sku": "ACC-MATERA-DIVIDIDA",
+      "name": "Matera Dividida",
+      "category": "Accesorios",
+      "subtype": "Materas",
+      "price": "990.00",
+      "description": "La Matera Dividida tiene un compartimiento para el termo y otro para el mate, así viajan separados y no se golpean. Liviana, fácil de llevar, pensada para el día a día.\n\nMaterial: Ecocuero\nCompartimientos: Termo + mate separados\nCuidados: Limpiar con paño húmedo",
+      "images": [
+        "./images/matera-dividida.jpg"
+      ]
+    },
+    {
+      "sku": "MATE-PORONGO-CLASICO",
+      "name": "Porongo (Clásico)",
+      "category": "Mates",
+      "subtype": "Porongo",
+      "price": "490.00",
+      "description": "El Porongo es la calabaza clásica en su forma más pura. Liviano, cómodo y de buen tamaño para el cebado diario. Sin adornos, sin vueltas.\n\nMaterial: Calabaza natural\nTipo: Porongo\nCuidados: Curar antes del primer uso",
+      "images": [
+        "./images/porongo-clasico.jpg"
+      ]
+    },
+    {
+      "sku": "MATE-PORONGO-PULIDO",
+      "name": "Porongo (Pulido)",
+      "category": "Mates",
+      "subtype": "Porongo",
+      "price": "690.00",
+      "description": "El Porongo es la calabaza clásica en su forma más pura. Liviano, cómodo y de buen tamaño para el cebado diario. Sin adornos, sin vueltas.\n\nMaterial: Calabaza natural\nTipo: Porongo\nCuidados: Curar antes del primer uso",
+      "images": [
+        "./images/porongo-pulido.jpg"
+      ]
+    },
+    {
+      "sku": "MATE-PORONGO-VIROLA-CHATA",
+      "name": "Porongo Virola Chata",
+      "category": "Mates",
+      "subtype": "Porongo",
+      "price": "750.00",
+      "description": "El Porongo Virola Chata combina la forma clásica del porongo con una virola chata que le da un acabado más prolijo y moderno. Cómodo para cebar, fácil de limpiar y de buena presencia.\n\nMaterial: Calabaza\nVirola: Chata\nCuidados: Curar antes del primer uso",
+      "images": [
+        "./images/porongo-virola-chata.jpg"
+      ]
+    },
+    {
+      "sku": "MATE-IMPERIAL-ZEBRA",
+      "name": "Imperial Zebra",
+      "category": "Mates",
+      "subtype": "Imperial",
+      "price": "2490.00",
+      "description": "El Imperial Zebra es un algarrobo imperial con una veta cebrada natural que lo hace inconfundible. Lijado y terminado a mano, cada uno tiene su propio dibujo. Forma amplia, cómodo para cebar largo.\n\nMaterial: Madera de algarrobo\nForma: Imperial (boca ancha)\nCuidados: Secar boca abajo, evitar detergente",
+      "images": [
+        "./images/imperial-zebra.jpg"
+      ]
+    },
+    {
+      "sku": "COMBO-PORONGO-POSAMATE-VIROLA-CHATA",
+      "name": "Combo Porongo + Posamate (Virola Chata)",
+      "category": "Combos",
+      "subtype": "Con porongo",
+      "price": "990.00",
+      "description": "El Combo Porongo + Posamate junta el clásico porongo de calabaza con un posamate hecho a mano. Una combinación simple y completa para el que quiere empezar bien o regalar con criterio.\n\nIncluye: Porongo + posamate\nMaterial: Calabaza + cuero\nHecho: A mano",
+      "images": [
+        "./images/combo-porongo-virola-chata-posamate.jpg"
+      ]
+    },
+    {
+      "sku": "COMBO-PORONGO-POSAMATE-CLASICO",
+      "name": "Combo Porongo + Posamate (Clásico)",
+      "category": "Combos",
+      "subtype": "Con porongo",
+      "price": "850.00",
+      "description": "El Combo Porongo + Posamate junta el clásico porongo de calabaza con un posamate hecho a mano. Una combinación simple y completa para el que quiere empezar bien o regalar con criterio.\n\nIncluye: Porongo + posamate\nMaterial: Calabaza + cuero\nHecho: A mano",
+      "images": [
+        "./images/combo-porongo-posamate-v2.jpg"
+      ]
+    },
+    {
+      "sku": "COMBO-PORONGO-POSAMATE-PULIDO",
+      "name": "Combo Porongo + Posamate (Pulido)",
+      "category": "Combos",
+      "subtype": "Con porongo",
+      "price": "990.00",
+      "description": "El Combo Porongo + Posamate junta el clásico porongo de calabaza con un posamate hecho a mano. Una combinación simple y completa para el que quiere empezar bien o regalar con criterio.\n\nIncluye: Porongo + posamate\nMaterial: Calabaza + cuero\nHecho: A mano",
+      "images": [
+        "./images/combo-porongo-pulido-posamate.jpg"
+      ]
+    },
+    {
+      "sku": "COMBO-CAMIONERO-POSAMATE-CLASICO",
+      "name": "Combo Camionero + Posamate (Clásico)",
+      "category": "Combos",
+      "subtype": "Con camionero",
+      "price": "890.00",
+      "description": "El Combo Camionero + Posamate reúne el camionero de calabaza con un posamate artesanal. Práctico, completo y con el carácter de lo hecho a mano.\n\nIncluye: Camionero + posamate\nMaterial: Calabaza + cuero\nHecho: A mano",
+      "images": [
+        "./images/combo-camionero-posamate-v2.jpg"
+      ]
+    },
+    {
+      "sku": "COMBO-CAMIONERO-POSAMATE-PULIDO",
+      "name": "Combo Camionero + Posamate (Pulido)",
+      "category": "Combos",
+      "subtype": "Con camionero",
+      "price": "990.00",
+      "description": "El Combo Camionero + Posamate reúne el camionero de calabaza con un posamate artesanal. Práctico, completo y con el carácter de lo hecho a mano.\n\nIncluye: Camionero + posamate\nMaterial: Calabaza + cuero\nHecho: A mano",
+      "images": [
+        "./images/combo-camionero-pulido-posamate.jpg"
+      ]
+    },
+    {
+      "sku": "COMBO-CAMIONERO-VIROLA-POSAMATE",
+      "name": "Combo Camionero Virola + Posamate",
+      "category": "Combos",
+      "subtype": "Con camionero",
+      "price": "990.00",
+      "description": "El Combo Camionero Virola + Posamate junta el camionero con virola de alpaca con un posamate artesanal. Un combo con presencia, hecho para durar.\n\nIncluye: Camionero virola + posamate\nMaterial: Calabaza + alpaca + cuero\nHecho: A mano",
+      "images": [
+        "./images/combo-camionero-virola-posamate-v2.jpg"
+      ]
+    },
+    {
+      "sku": "BOMB-BOMBILLON-DISENO",
+      "name": "Bombillón con Diseño",
+      "category": "Bombillas",
+      "subtype": null,
+      "price": "790.00",
+      "description": "No es solo una bombilla, es una pieza de identidad. Diseños grabados, terminación pulida y estilo propio. Para el que quiere que cada detalle cuente.\n\nMaterial: Acero inoxidable\nBoca: Ancha\nTerminación: Pulida con diseño grabado",
+      "images": [
+        "./images/bombillon-diseno.jpg"
+      ]
+    },
+    {
+      "sku": "BOMB-APLIQUES",
+      "name": "Bombilla con Apliques",
+      "category": "Bombillas",
+      "subtype": null,
+      "price": "690.00",
+      "description": "La Bombilla con Apliques combina funcionalidad con detalle. Los apliques le dan presencia sin restarle practicidad. Hecha para durar y distinguirse.\n\nMaterial: Acero inoxidable\nTerminación: Con apliques decorativos",
+      "images": [
+        "./images/bombilla-apliques.jpg"
+      ]
+    },
+    {
+      "sku": "BOMB-BOMBILLON-PICO-LORO-DORADO",
+      "name": "Bombillón Pico Loro Dorado",
+      "category": "Bombillas",
+      "subtype": null,
+      "price": "990.00",
+      "description": "El Bombillón Pico Loro Dorado tiene la forma clásica del pico loro con una terminación dorada que lo distingue. Funcional, cómodo y con una presencia que se nota.\n\nMaterial: Acero inoxidable\nTerminación: Dorada\nTipo: Pico loro",
+      "images": [
+        "./images/bombillon-pico-loro-dorado.jpg"
+      ]
+    },
+    {
+      "sku": "BOMB-BOMBILLON-LISO",
+      "name": "Bombillón Liso",
+      "category": "Bombillas",
+      "subtype": null,
+      "price": "890.00",
+      "description": "El Bombillón Liso es para quienes valoran la comodidad y la tradición bien servida. Limpio, recto y funcional. Para el que no necesita adornos.\n\nMaterial: Acero inoxidable\nTerminación: Lisa\nBoca: Ancha · Tradicional",
+      "images": [
+        "./images/bombillon-liso.jpg"
+      ]
+    },
+    {
+      "sku": "BOMB-BOMBILLON-DORADO",
+      "name": "Bombillón Dorado",
+      "category": "Bombillas",
+      "subtype": null,
+      "price": "1090.00",
+      "description": "El Bombillón Dorado tiene una terminación dorada que lo distingue sin perder funcionalidad. Para el que quiere algo diferente en su equipo.\n\nMaterial: Acero inoxidable\nTerminación: Dorada",
+      "images": [
+        "./images/bombillon-dorado.jpg"
+      ]
+    },
+    {
+      "sku": "MATE-TORPEDO-VIROLA-SIMPLE-NEGRO",
+      "name": "Torpedo Virola Simple (Negro)",
+      "category": "Mates",
+      "subtype": "Torpedo",
+      "price": "690.00",
+      "description": "El Torpedo Virola Simple tiene la forma alargada del torpedo con una virola que protege la boca y le da un acabado prolijo. Disponible en negro y marrón.\n\nMaterial: Calabaza + virola\nForma: Torpedo\nCuidados: Secar boca abajo, evitar detergente",
+      "images": [
+        "./images/torpedo-virola-negro.jpg"
+      ]
+    },
+    {
+      "sku": "MATE-TORPEDO-VIROLA-SIMPLE-MARRON",
+      "name": "Torpedo Virola Simple (Marrón)",
+      "category": "Mates",
+      "subtype": "Torpedo",
+      "price": "690.00",
+      "description": "El Torpedo Virola Simple tiene la forma alargada del torpedo con una virola que protege la boca y le da un acabado prolijo. Disponible en negro y marrón.\n\nMaterial: Calabaza + virola\nForma: Torpedo\nCuidados: Secar boca abajo, evitar detergente",
+      "images": [
+        "./images/torpedo-virola-marron.jpg"
+      ]
+    },
+    {
+      "sku": "ACC-MATERA-CUERO-CRUDO-TRENZADA",
+      "name": "Matera Cuero Crudo Trenzada",
+      "category": "Accesorios",
+      "subtype": "Materas",
+      "price": "2390.00",
+      "description": "La Matera Cuero Crudo Trenzada está hecha a mano con cuero crudo natural. El trenzado le da resistencia y un acabado artesanal que la distingue. Para el que valora lo bien hecho.\n\nMaterial: Cuero crudo\nTerminación: Trenzada",
+      "images": [
+        "./images/Matera cuero crudo trenzada.jpg"
+      ]
+    },
+    {
+      "sku": "ACC-MATERA-CUERO-CRUDO-COCIDA-TIENTO",
+      "name": "Matera Cuero Crudo Cocida con Tiento",
+      "category": "Accesorios",
+      "subtype": "Materas",
+      "price": "2390.00",
+      "description": "La Matera Cuero Crudo Cocida con Tiento es un trabajo artesanal en cuero crudo, cosida con tiento natural. Resistente, con carácter, pensada para durar.\n\nMaterial: Cuero crudo\nTerminación: Cocida con tiento",
+      "images": [
+        "./images/Matera cuero crudo cocida con tiento.jpg"
+      ]
+    },
+    {
+      "sku": "ACC-YERBERO-AMARGO",
+      "name": "Yerbero Un Amargo",
+      "category": "Accesorios",
+      "subtype": "Yerberos",
+      "price": "490.00",
+      "description": "El Yerbero Un Amargo es el complemento perfecto para tu equipo de mate. Diseñado con la identidad de la marca, práctico y resistente para el día a día.\n\nMarca: Un Amargo",
+      "images": [
+        "./images/yerbero Un Amargo.jpg",
+        "./images/yerbero Un Amargo1.jpg",
+        "./images/yerbero Un Amargo2.jpg",
+        "./images/yerbero Un Amargo3.jpg"
+      ]
+    },
+    {
+      "sku": "BOMB-BOMBILLON-RECTO-PREMIUM-DORADO",
+      "name": "Bombillón Recto Premium Dorado",
+      "category": "Bombillas",
+      "subtype": null,
+      "price": "1090.00",
+      "description": "El Bombillón Recto Premium Dorado combina una línea recta y limpia con una terminación dorada de acabado superior. Cómodo para cebar, fácil de limpiar y con una presencia que se distingue en cualquier equipo.\n\nMaterial: Acero inoxidable\nTerminación: Dorada premium\nForma: Recta",
+      "images": [
+        "./images/bombillón recto premium dorado frente.jpg",
+        "./images/bombillón recto premium dorado inclinado.jpg",
+        "./images/bombillón recto premium dorado acostado.jpg"
+      ]
+    },
+    {
+      "sku": "ACC-BASE-REPOSAMATE",
+      "name": "Base Reposamate",
+      "category": "Accesorios",
+      "subtype": "Posamates",
+      "price": "349.00",
+      "description": "La Base Reposamate mantiene el mate firme y en ángulo, listo para la próxima cebada. Terminación negra mate con el logo de Un Amargo grabado en relieve. Simple, estable y pensada para el uso diario.\n\nColor: Negro\nDetalle: Logo grabado en relieve\nUso: Apoyo inclinado para el mate",
+      "images": [
+        "./images/base-reposamate.jpg"
+      ]
+    },
+    {
+      "sku": "ACC-SECADOR-MATE-BOMBILLA",
+      "name": "Secador para Mate y Bombilla",
+      "category": "Accesorios",
+      "subtype": "Limpieza",
+      "price": "349.00",
+      "description": "El Secador para Mate y Bombilla resuelve el después de la cebada. El soporte central sostiene el mate boca abajo para que escurra y se seque bien por dentro, y el orificio lateral deja la bombilla parada secándose al lado. Las divisiones mantienen todo en su lugar y el agua contenida.\n\nColor: Negro\nIncluye: Soporte para mate + lugar para bombilla\nUso: Secado boca abajo",
+      "images": [
+        "./images/secamate.jpg"
+      ]
+    }
+  ]
+}
