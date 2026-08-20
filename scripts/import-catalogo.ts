@@ -21,7 +21,8 @@
  */
 import { statSync } from "node:fs";
 import path from "node:path";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
+import { PRODUCT_LIMIT_LOCK } from "@/lib/db/locks";
 import { slugify, uniqueSlug } from "@/lib/domain/slug";
 import { createScriptDb, schema } from "./lib/db";
 
@@ -552,6 +553,14 @@ type ImportOptions = {
  * root.
  */
 function resolveDemoDir(value: string): string {
+  // `--demo-dir ""` and `--demo-dir=` would resolve to process.cwd(), which
+  // exists and IS a directory, so every check below would pass and the import
+  // would quietly read the repo root instead of the client's demo.
+  if (value.trim() === "") {
+    throw new ImportError(
+      `--demo-dir no puede estar vacío: apuntaría a ${process.cwd()}.\n${USAGE}`,
+    );
+  }
   const resolved = path.resolve(value);
   let stats;
   try {
@@ -609,6 +618,7 @@ function parseOptions(argv: string[]): ImportOptions {
   let demoDir = DEFAULT_DEMO_DIR;
   let pathPrefix = "";
   let dryRun = false;
+  const seen = new Set<string>();
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -634,14 +644,28 @@ function parseOptions(argv: string[]): ImportOptions {
       return next;
     };
 
+    // Silently letting the last one win is the one lenient behaviour nobody
+    // expects from a parser that rejects unknown flags and stray arguments,
+    // and it hides exactly the mistake that matters: two --path-prefix, one of
+    // them the rehearsal prefix, and the run goes to production keys.
+    const once = (): void => {
+      if (seen.has(flag)) {
+        throw new ImportError(`la opción ${flag} está repetida.\n${USAGE}`);
+      }
+      seen.add(flag);
+    };
+
     switch (flag) {
       case "--demo-dir":
+        once();
         demoDir = takeValue();
         break;
       case "--path-prefix":
+        once();
         pathPrefix = takeValue();
         break;
       case "--dry-run":
+        once();
         if (inline !== undefined) {
           throw new ImportError(`--dry-run no lleva valor.\n${USAGE}`);
         }
@@ -752,6 +776,11 @@ async function main(): Promise<void> {
   const summary: ImportSummary = { ...EMPTY_SUMMARY };
   const { db, close } = createScriptDb();
   let started = false;
+  // Set the instant the transaction commits, and never cleared: it is what
+  // separates "the run failed and the database is untouched" from "the run
+  // failed with the client's catalog already written". Only the second one is
+  // worth a summary, and only the first one is worth saying it rolled back.
+  let committed = false;
   try {
     try {
       // One transaction for the whole taxonomy: ~30 statements in autocommit
@@ -766,10 +795,21 @@ async function main(): Promise<void> {
       // no timeout. Inside here, always use `tx`.
       await db.transaction(async (tx) => {
         started = true;
+        // FIRST statement of the transaction, before anything writes: same
+        // order as src/lib/import-runner.ts:73, the other place that inserts
+        // products under the 150-active cap. T5 checks that cap and must not
+        // take the lock itself further down -- a transaction that has already
+        // written unique-indexed columns and only then asks for a lock is the
+        // asymmetry that turns two concurrent writers into a deadlock instead
+        // of a queue. It costs nothing here and it settles the order for T5.
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(${PRODUCT_LIMIT_LOCK})`,
+        );
+
         const taxonomy = await syncTaxonomy(tx);
         summary.categoriesTouched = taxonomy.categoriesTouched;
-        // T5 inserts the products HERE, on `tx` and never on `db`, and adds
-        // its counts to `summary`.
+        // T5 inserts the products HERE, on `tx` and never on `db`, adds its
+        // counts to `summary`, and relies on the lock taken above.
 
         // --dry-run has no separate "what it would do" branch, which would
         // drift from the real one the first time somebody edited only half of
@@ -777,6 +817,7 @@ async function main(): Promise<void> {
         // transaction never commits.
         if (options.dryRun) throw new DryRunRollback();
       });
+      committed = true;
       log("Cambios confirmados en la base.");
     } catch (error) {
       if (!(error instanceof DryRunRollback)) throw error;
@@ -793,13 +834,24 @@ async function main(): Promise<void> {
       `Resumen${options.dryRun ? " del SIMULACRO (nada de esto se escribió)" : ""}: ${formatSummary(summary)}.`,
     );
   } catch (error) {
-    // The log above lists writes that no longer exist. Say so: an operator
-    // reading a failed production run has to know whether the rename stuck.
-    // No summary follows a failure: its numbers would describe a state that
-    // was rolled back.
-    if (started) {
+    // The log above lists writes that may no longer exist. Say which: an
+    // operator reading a failed production run has to know whether the rename
+    // stuck.
+    if (started && !committed) {
       logError(
         "La transacción se revirtió: la base quedó como estaba antes de esta corrida.",
+      );
+    }
+    // The question is NOT "did the run finish", it is "did anything survive".
+    // A summary of a rolled-back transaction describes a state that does not
+    // exist. But once the transaction has committed -- or once T6 has put a
+    // photo in the bucket, which no rollback takes back -- the operator needs
+    // those numbers precisely BECAUSE the run failed: they are the only record
+    // of what is now in the client's database and bucket. T6: keep this
+    // condition true for anything it uploads.
+    if (committed || summary.photosUploaded > 0) {
+      log(
+        `Resumen hasta el fallo (esto quedó escrito): ${formatSummary(summary)}.`,
       );
     }
     throw error;
