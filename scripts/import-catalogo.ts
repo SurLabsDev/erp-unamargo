@@ -885,6 +885,18 @@ const CONTENT_TYPES: Record<string, string> = {
   ".webp": "image/webp",
 };
 
+/**
+ * Per-object limit of the `productos` bucket, in bytes.
+ *
+ * Read from the bucket itself on 2026-08-20 -- `GET /storage/v1/bucket/productos`
+ * answers `"file_size_limit": 2097152` -- and copied here instead of queried at
+ * run time, because this check has to work under `--dry-run`, and a `--dry-run`
+ * opens no socket. If the client ever resizes the bucket, re-read that field and
+ * change this line; a file over the limit is rejected with a 413 that says
+ * nothing about which photo it was.
+ */
+const MAX_PHOTO_BYTES = 2_097_152;
+
 /** One of the catalog's image references, resolved to a file that exists. */
 type ImageFile = {
   /** Absolute path on disk, in the exact form that opened. */
@@ -892,6 +904,8 @@ type ImageFile = {
   /** Extension without the dot, lower case. The bucket key keeps it. */
   ext: string;
   contentType: string;
+  /** Bytes on disk, checked against the bucket's own limit before uploading. */
+  size: number;
 };
 
 /**
@@ -901,11 +915,19 @@ type ImageFile = {
  * form, a case- and normalization-sensitive volume does not, so all three are
  * tried and the one that opened is the one that gets read later.
  * (`bombillón recto premium dorado frente.jpg` is exactly this case.)
+ *
+ * Returns the size along with the path: the `stat` is already paid for here, and
+ * the size is what the bucket limit is checked against.
  */
-function existingFile(file: string): string | null {
-  for (const candidate of [file, file.normalize("NFC"), file.normalize("NFD")]) {
+function existingFile(file: string): { file: string; size: number } | null {
+  for (const candidate of [
+    file,
+    file.normalize("NFC"),
+    file.normalize("NFD"),
+  ]) {
     try {
-      if (statSync(candidate).isFile()) return candidate;
+      const stats = statSync(candidate);
+      if (stats.isFile()) return { file: candidate, size: stats.size };
     } catch {
       // Not under this form; try the next.
     }
@@ -914,14 +936,17 @@ function existingFile(file: string): string | null {
 }
 
 /**
- * Every distinct image the given entries name, resolved against the demo folder
- * and checked to exist, WITHOUT opening a socket or touching the database.
+ * Every distinct image the given entries name, resolved against the demo folder,
+ * checked to exist and checked to fit in the bucket, WITHOUT opening a socket or
+ * touching the database.
  *
  * Called before the first upload, and it is the reason it exists: a typo in
- * `--demo-dir`, or a photo that was renamed inside the demo, must stop the run
- * with the file named -- not leave the client's bucket with the first eleven
- * products done and the twelfth half linked. It is also the whole of what a
- * `--dry-run` can honestly check about this phase.
+ * `--demo-dir`, a photo renamed inside the demo, or one too heavy for the bucket
+ * must stop the run with the file named -- not halfway through the client's
+ * catalog. It is also the whole of what a `--dry-run` can honestly check about
+ * this phase, and the reason the size check lives here and not next to the
+ * upload: finding out in the rehearsal that a photo does not fit is exactly what
+ * a rehearsal is for.
  */
 function resolveImageFiles(
   entries: CatalogEntry[],
@@ -959,7 +984,21 @@ function resolveImageFiles(
         missing.push(ref);
         continue;
       }
-      resolved.set(ref, { file: found, ext: ext.slice(1), contentType });
+      // Bytes and not megabytes: the number the operator compares against is
+      // the one the bucket publishes, and rounding it invites "pero si pesa
+      // 2 MB justo".
+      if (found.size > MAX_PHOTO_BYTES) {
+        throw new ImportError(
+          `la foto "${ref}" del producto "${entry.sku}" pesa ${found.size} bytes y el bucket admite hasta ${MAX_PHOTO_BYTES}. ` +
+            `Redimensionala en la demo antes de correr el import.`,
+        );
+      }
+      resolved.set(ref, {
+        file: found.file,
+        ext: ext.slice(1),
+        contentType,
+        size: found.size,
+      });
     }
   }
 
@@ -975,6 +1014,26 @@ function resolveImageFiles(
 }
 
 /**
+ * Storage has to be reachable before ANYTHING is written, and main() calls this
+ * before opening the transaction -- for the real run and for the `--dry-run`
+ * alike.
+ *
+ * Checking it where the photos are uploaded was too late in both directions: a
+ * real run committed the client's 34 products and only then discovered it could
+ * not upload a single photo, and a `--dry-run` in that same environment came out
+ * entirely green, which is the one thing a rehearsal must never do.
+ *
+ * It reads two variables and opens no socket, so a `--dry-run` can run it.
+ */
+function assertStorageReady(): void {
+  if (storageConfigured()) return;
+  throw new ImportError(
+    "faltan SUPABASE_URL o SUPABASE_SECRET_KEY: sin ellas no se puede subir ninguna foto. " +
+      "Completá el entorno y volvé a correr el import; hasta acá no se escribió nada.",
+  );
+}
+
+/**
  * Uploads each product's photos to the `productos` bucket and links them.
  *
  * Runs OUTSIDE the transaction, on the plain connection, and only after it has
@@ -984,18 +1043,25 @@ function resolveImageFiles(
  * rollback -- and that is why it goes last: everything reversible is settled
  * before the first byte leaves.
  *
- * Two orders matter and neither is interchangeable:
+ * Three rules, and none of them is interchangeable:
  *
- * - The file goes up FIRST and the `product_images` row SECOND. A row pointing
- *   at an object that is not there shows a broken image on the client's site.
- *   An orphaned object in the bucket is invisible and costs nothing.
+ * - A product's files ALL go up first, and only then do its `product_images`
+ *   rows go in, as ONE multi-row INSERT. That keeps the invariant that matters
+ *   -- no row ever points at an object that is not there, which would show a
+ *   broken image on the client's site -- and it adds the other half: a product
+ *   is all its photos or none of them. A failure, a Ctrl-C or a SIGKILL partway
+ *   through a product leaves zero rows for it, so the next run redoes it whole.
+ *   What survives is orphaned objects in the bucket, which are invisible and
+ *   cost nothing. No `catch` could have given the same guarantee against a
+ *   signal.
  * - A product that ALREADY has rows in `product_images` is skipped whole. That
  *   is what makes this safe to run twice: the alternative -- topping it up --
  *   would re-upload the photo the client deleted from Stock on purpose.
- *
- * `progress` is updated as it goes, photo by photo, and it is the same object
- * main() reads in its `finally`. A failure at photo 13 has to be able to say
- * that 12 are in the bucket and linked, because nothing here rolls back.
+ * - `progress` is updated as it goes, product by product, and it is the same
+ *   object main() reads in its `finally`. A failure at the fifteenth product has
+ *   to be able to say how many photos are linked, because nothing here rolls
+ *   back. It counts LINKED photos: an object uploaded whose row never landed is
+ *   not a photo the client has.
  */
 export async function importImages(
   db: Executor,
@@ -1004,14 +1070,10 @@ export async function importImages(
   pathPrefix: string,
   progress: { uploaded: number; skipped: number } = { uploaded: 0, skipped: 0 },
 ): Promise<{ uploaded: number; skipped: number }> {
-  // Once, before the first product: an import that cannot write to the bucket
-  // has to stop before it starts, not fail 42 times in a row.
-  if (!storageConfigured()) {
-    throw new ImportError(
-      "faltan SUPABASE_URL o SUPABASE_SECRET_KEY: sin ellas no se puede subir ninguna foto. " +
-        "Los productos y la taxonomía ya quedaron escritos; completá el entorno y volvé a correr el import.",
-    );
-  }
+  // Cheap and socket-free. main() already ran it before the transaction; this
+  // is here because the function is exported and must not depend on its caller
+  // having done it.
+  assertStorageReady();
 
   const bySku = new Map(
     (
@@ -1027,25 +1089,26 @@ export async function importImages(
     ).map((row): [string, string] => [row.sku, row.id]),
   );
 
-  // One read for the whole catalog instead of one per product. Only the ids
-  // matter: how MANY rows a product has is not the question, whether it has any
-  // is.
+  // How many rows each product ALREADY has, in one read for the whole catalog.
+  // The real count and not the catalog's, because those two can disagree -- the
+  // client can add or delete photos from Stock -- and it is this number, never
+  // the catalog's, that describes what is in the database.
   const ids = [...bySku.values()];
-  const withPhotos = new Set(
+  const photoRows = new Map(
     ids.length === 0
       ? []
       : (
           await db
-            .select({ productId: productImages.productId })
+            .select({ productId: productImages.productId, rows: count() })
             .from(productImages)
             .where(inArray(productImages.productId, ids))
             .groupBy(productImages.productId)
-        ).map((row) => row.productId),
+        ).map((row): [string, number] => [row.productId, row.rows]),
   );
 
   const pending = entries.filter((entry) => {
     const id = bySku.get(entry.sku);
-    return id !== undefined && !withPhotos.has(id);
+    return id !== undefined && (photoRows.get(id) ?? 0) === 0;
   });
 
   // Every file that is about to go up, checked before the first one does.
@@ -1058,66 +1121,70 @@ export async function importImages(
       // means somebody deleted the row between the commit and now. The import
       // does NOT create it from here: that belongs to the product phase, under
       // its advisory lock and its 150-active cap.
-      progress.skipped += entry.images.length;
+      //
+      // NOT counted as skipped: `photosSkipped` means "the product already had
+      // its own photos", and folding a missing product into it would report a
+      // gap as if it were a product that was fine. It gets a warning, which is
+      // the line the operator has to act on.
       warn(
         `Producto "${entry.sku}" no está en la base; sus ${entry.images.length} foto(s) quedan sin subir.`,
       );
       continue;
     }
-    if (withPhotos.has(productId)) {
-      progress.skipped += entry.images.length;
-      log(`Producto "${entry.sku}" ya tiene fotos; se deja como está.`);
+
+    const already = photoRows.get(productId) ?? 0;
+    if (already > 0) {
+      // The rows it HAS, not the paths the catalog carries: if somebody edited
+      // this product's photos from Stock the two differ, and the honest number
+      // is the one in the database.
+      progress.skipped += already;
+      log(
+        `Producto "${entry.sku}" ya tiene ${already} foto(s); se deja como está.`,
+      );
       continue;
     }
     if (entry.images.length === 0) continue;
 
-    let linked = 0;
-    try {
-      for (const [index, ref] of entry.images.entries()) {
-        const image = files.get(ref);
-        // resolveImageFiles walked these same entries, so this cannot miss.
-        if (!image) throw new ImportError(`la foto "${ref}" no se resolvió.`);
+    // Every object of this product goes up first; the rows are written below,
+    // in one statement, once they all exist.
+    const rows: Array<{ productId: string; path: string; sortOrder: number }> =
+      [];
+    for (const [index, ref] of entry.images.entries()) {
+      const image = files.get(ref);
+      // resolveImageFiles walked these same entries, so this cannot miss.
+      if (!image) throw new ImportError(`la foto "${ref}" no se resolvió.`);
 
-        // A fresh uuid per upload, never a name derived from the file: the
-        // Supabase CDN caches public URLs, so reusing a key serves the OLD
-        // image (see the comment on productImages in src/lib/db/schema.ts).
-        // The SKU only makes the bucket readable when browsing it; catalogSchema
-        // already constrains it to [A-Z0-9_-]{1,40}, the same alphabet
-        // src/lib/storage.ts sanitizes to.
-        const bucketPath = `${pathPrefix}${entry.sku}/${randomUUID()}.${image.ext}`;
+      // A fresh uuid per upload, never a name derived from the file: the
+      // Supabase CDN caches public URLs, so reusing a key serves the OLD image
+      // (see the comment on productImages in src/lib/db/schema.ts). The SKU
+      // only makes the bucket readable when browsing it; catalogSchema already
+      // constrains it to [A-Z0-9_-]{1,40}, the same alphabet
+      // src/lib/storage.ts sanitizes to.
+      const bucketPath = `${pathPrefix}${entry.sku}/${randomUUID()}.${image.ext}`;
 
-        const uploaded = await uploadFile({
-          bucketPath,
-          bytes: readFileSync(image.file),
-          contentType: image.contentType,
-        });
-        if (!uploaded.ok) {
-          throw new ImportError(
-            `no se pudo subir la foto "${ref}" del producto "${entry.sku}": ${uploaded.error}`,
-          );
-        }
-
-        // AFTER the object exists, never before.
-        await db
-          .insert(productImages)
-          .values({ productId, path: bucketPath, sortOrder: index });
-
-        linked++;
-        progress.uploaded++;
-        log(`Foto ${index + 1}/${entry.images.length} de "${entry.sku}" subida como "${bucketPath}".`);
-      }
-    } catch (error) {
-      // The skip rule above is per product, so a product left half done is NOT
-      // finished by running the script again: it would be skipped for having
-      // photos. Say so here, where the SKU is known.
-      if (linked > 0) {
-        logError(
-          `El producto "${entry.sku}" quedó con ${linked} de ${entry.images.length} fotos. ` +
-            `Una corrida nueva lo saltea porque ya tiene fotos: borrale las que quedaron desde Stock y volvé a correr el import.`,
+      const uploaded = await uploadFile({
+        bucketPath,
+        bytes: readFileSync(image.file),
+        contentType: image.contentType,
+      });
+      if (!uploaded.ok) {
+        throw new ImportError(
+          `no se pudo subir la foto "${ref}" del producto "${entry.sku}": ${uploaded.error}`,
         );
       }
-      throw error;
+
+      rows.push({ productId, path: bucketPath, sortOrder: index });
+      log(
+        `Foto ${index + 1}/${entry.images.length} de "${entry.sku}" subida como "${bucketPath}".`,
+      );
     }
+
+    // One statement, so it is atomic without an explicit transaction: either
+    // this product has all its photos or it has none, and the next run can tell
+    // which by counting its rows.
+    await db.insert(productImages).values(rows);
+    progress.uploaded += rows.length;
+    log(`Producto "${entry.sku}": ${rows.length} foto(s) enlazadas.`);
   }
 
   return { uploaded: progress.uploaded, skipped: progress.skipped };
@@ -1315,10 +1382,18 @@ type ImportSummary = {
    * in the database. Filled by importProducts. */
   productsCreated: number;
   productsSkipped: number;
-  /** Photos uploaded and linked, and photos not uploaded because the product
-   * already had its own. PHOTOS, not products: a skipped product with three
-   * pictures adds three. Filled by importImages, as it goes -- a failure
-   * halfway through the bucket still has to report what is in it. */
+  /** Photos uploaded AND linked, and photos not uploaded because the product
+   * already had its own. PHOTOS, not products: a product skipped with three
+   * pictures adds three.
+   *
+   * Both are counted from what is in the database and never from what the
+   * catalog carries -- the client can add or delete photos from Stock, and a
+   * total that assumed the two agree would print 42 over a table holding 40.
+   * A product that is not in the database at all is neither: it gets a warning,
+   * because it is a gap and not a product that was fine.
+   *
+   * Filled by importImages as it goes: a failure halfway through the bucket
+   * still has to report what is in it. */
   photosUploaded: number;
   photosSkipped: number;
 };
@@ -1399,6 +1474,13 @@ async function main(): Promise<void> {
   // transaction.
   const entries = loadCatalog();
   log(`Catálogo: ${entries.length} productos leídos de ${CATALOG_PATH}.`);
+
+  // BEFORE the transaction, and for the simulation too. An import that cannot
+  // reach Storage has to stop while nothing has been written: checking it where
+  // the photos go up used to commit the client's 34 products and only then
+  // discover it could not upload one, and left a --dry-run in that same
+  // environment finishing entirely green.
+  assertStorageReady();
 
   const summary: ImportSummary = { ...EMPTY_SUMMARY };
   const { db, close } = createScriptDb();
