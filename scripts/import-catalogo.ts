@@ -1,7 +1,7 @@
 /**
  * One-off catalog import for Unamargo (2026-08-20).
  *
- *   npm run db:import-catalogo
+ *   npm run db:import-catalogo -- [--demo-dir <ruta>] [--path-prefix <prefijo>] [--dry-run]
  *
  * Use the npm script, NOT a bare `npx tsx scripts/import-catalogo.ts`: tsx does
  * not read `.env` on its own, so the bare form falls back to the local Docker
@@ -9,9 +9,9 @@
  * announces its target database (host and name, never credentials) on the first
  * line, so the operator can see which one is about to change.
  *
- * Part 1 (taxonomy). Tasks 4-6 (see
- * .superpowers/sdd/2026-08-20-import-catalogo) extend this same file with a
- * CLI, the product import and the photo upload.
+ * Parts 1 and 2 (taxonomy and the command line). Tasks 5 and 6 (see
+ * .superpowers/sdd/2026-08-20-import-catalogo) extend this same file with the
+ * product import and the photo upload.
  *
  * This step reconciles the product taxonomy seeded on 2026-08-19 -- inferred
  * from demo fixtures -- against the real range the client's own HTML demo
@@ -19,6 +19,8 @@
  * (the rule everywhere in this ERP): history and any future reactivation
  * both depend on the row surviving.
  */
+import { statSync } from "node:fs";
+import path from "node:path";
 import { eq } from "drizzle-orm";
 import { slugify, uniqueSlug } from "@/lib/domain/slug";
 import { createScriptDb, schema } from "./lib/db";
@@ -47,6 +49,40 @@ export class ImportError extends Error {
     super(message);
     this.name = "ImportError";
   }
+}
+
+/**
+ * Thrown at the end of the transaction body when `--dry-run` is on: every
+ * statement runs and reaches Postgres, and none of it is committed. main()
+ * catches THIS sentinel and nothing else, so a rollback caused by a real
+ * failure can never be reported as a clean simulation.
+ */
+class DryRunRollback extends Error {
+  constructor() {
+    super("--dry-run");
+    this.name = "DryRunRollback";
+  }
+}
+
+/**
+ * Every line the runner prints goes through these three. The prefix carries the
+ * mode, so no single line halfway down a long log can be read as a real write
+ * when it was a simulation, or the other way round. main() sets it once, before
+ * anything is printed, and nothing changes it afterwards.
+ */
+const PREFIX = "[import-catalogo]";
+let linePrefix = PREFIX;
+
+function log(message: string): void {
+  console.log(`${linePrefix} ${message}`);
+}
+
+function warn(message: string): void {
+  console.warn(`${linePrefix} ${message}`);
+}
+
+function logError(message: string): void {
+  console.error(`${linePrefix} ${message}`);
 }
 
 // --- Desired taxonomy state --------------------------------------------------
@@ -214,7 +250,10 @@ async function fetchSubtypes(
  * whose name gives no hint, because renaming from Configuración deliberately
  * never touches the slug.
  */
-async function applyRenames(db: Executor): Promise<void> {
+async function applyRenames(
+  db: Executor,
+  touched: Set<string>,
+): Promise<void> {
   for (const rename of RENAMES) {
     // Re-read per entry: the previous rename moved a name and a slug.
     const categories = await fetchCategories(db);
@@ -259,8 +298,9 @@ async function applyRenames(db: Executor): Promise<void> {
         .update(productCategories)
         .set({ name: rename.to, slug: rename.toSlug })
         .where(eq(productCategories.id, source.id));
-      console.log(
-        `[import-catalogo] Categoría "${rename.from}" renombrada a "${rename.to}" (slug -> "${rename.toSlug}").`,
+      touched.add(rename.to);
+      log(
+        `Categoría "${rename.from}" renombrada a "${rename.to}" (slug -> "${rename.toSlug}").`,
       );
       continue;
     }
@@ -272,8 +312,9 @@ async function applyRenames(db: Executor): Promise<void> {
         .update(productCategories)
         .set({ slug: rename.toSlug })
         .where(eq(productCategories.id, target.id));
-      console.log(
-        `[import-catalogo] Categoría "${rename.to}" ya estaba renombrada; slug corregido de "${target.slug}" a "${rename.toSlug}".`,
+      touched.add(rename.to);
+      log(
+        `Categoría "${rename.to}" ya estaba renombrada; slug corregido de "${target.slug}" a "${rename.toSlug}".`,
       );
     }
   }
@@ -284,6 +325,7 @@ async function reorderSubtypes(
   categoryId: string,
   categoryName: string,
   desiredNames: string[],
+  touched: Set<string>,
 ): Promise<void> {
   const rows = await fetchSubtypes(db, categoryId);
   for (const { row, sortOrder } of planSortOrder(rows, desiredNames)) {
@@ -292,9 +334,8 @@ async function reorderSubtypes(
       .update(productSubtypes)
       .set({ sortOrder })
       .where(eq(productSubtypes.id, row.id));
-    console.log(
-      `[import-catalogo] Subtipo "${row.name}" de "${categoryName}" ordenado en ${sortOrder}.`,
-    );
+    touched.add(categoryName);
+    log(`Subtipo "${row.name}" de "${categoryName}" ordenado en ${sortOrder}.`);
   }
 }
 
@@ -303,6 +344,7 @@ async function syncSubtypes(
   categoryId: string,
   categoryName: string,
   desiredNames: string[],
+  touched: Set<string>,
 ): Promise<void> {
   const existing = await fetchSubtypes(db, categoryId);
 
@@ -326,9 +368,8 @@ async function syncSubtypes(
         slug,
         sortOrder: index + 1,
       });
-      console.log(
-        `[import-catalogo] Subtipo "${name}" creado bajo "${categoryName}".`,
-      );
+      touched.add(categoryName);
+      log(`Subtipo "${name}" creado bajo "${categoryName}".`);
       continue;
     }
     if (!current.isActive) {
@@ -336,9 +377,8 @@ async function syncSubtypes(
         .update(productSubtypes)
         .set({ isActive: true })
         .where(eq(productSubtypes.id, current.id));
-      console.log(
-        `[import-catalogo] Subtipo "${name}" reactivado bajo "${categoryName}".`,
-      );
+      touched.add(categoryName);
+      log(`Subtipo "${name}" reactivado bajo "${categoryName}".`);
     }
   }
 
@@ -351,17 +391,19 @@ async function syncSubtypes(
       .update(productSubtypes)
       .set({ isActive: false })
       .where(eq(productSubtypes.id, current.id));
-    console.log(
-      `[import-catalogo] Subtipo "${current.name}" desactivado bajo "${categoryName}" (no está en la taxonomía nueva).`,
+    touched.add(categoryName);
+    log(
+      `Subtipo "${current.name}" desactivado bajo "${categoryName}" (no está en la taxonomía nueva).`,
     );
   }
 
-  await reorderSubtypes(db, categoryId, categoryName, desiredNames);
+  await reorderSubtypes(db, categoryId, categoryName, desiredNames, touched);
 }
 
 async function applyDeactivations(
   db: Executor,
   categories: CategoryRow[],
+  touched: Set<string>,
 ): Promise<void> {
   for (const name of DEACTIVATE) {
     const category = matchByName(
@@ -373,9 +415,7 @@ async function applyDeactivations(
     );
     if (!category) {
       // Correct on a clean database: there is nothing to deactivate.
-      console.warn(
-        `[import-catalogo] Categoría "${name}" no existe; nada que desactivar.`,
-      );
+      warn(`Categoría "${name}" no existe; nada que desactivar.`);
       continue;
     }
     if (!category.isActive) continue; // already inactive: idempotent no-op
@@ -384,11 +424,15 @@ async function applyDeactivations(
       .update(productCategories)
       .set({ isActive: false })
       .where(eq(productCategories.id, category.id));
-    console.log(`[import-catalogo] Categoría "${name}" desactivada.`);
+    touched.add(name);
+    log(`Categoría "${name}" desactivada.`);
   }
 }
 
-async function reorderCategories(db: Executor): Promise<void> {
+async function reorderCategories(
+  db: Executor,
+  touched: Set<string>,
+): Promise<void> {
   const rows = await fetchCategories(db);
   const declared = TAXONOMY.map((entry) => entry.category);
   for (const { row, sortOrder } of planSortOrder(rows, declared)) {
@@ -397,14 +441,22 @@ async function reorderCategories(db: Executor): Promise<void> {
       .update(productCategories)
       .set({ sortOrder })
       .where(eq(productCategories.id, row.id));
-    console.log(
-      `[import-catalogo] Categoría "${row.name}" ordenada en ${sortOrder}.`,
-    );
+    touched.add(row.name);
+    log(`Categoría "${row.name}" ordenada en ${sortOrder}.`);
   }
 }
 
-export async function syncTaxonomy(db: Executor): Promise<void> {
-  await applyRenames(db);
+/**
+ * Returns how many categories it actually WROTE (their own row, or one of their
+ * subtypes), counted by name so a category rewritten three times counts once.
+ * A second run over an already-imported database reports 0, and that is exactly
+ * what the operator needs to read: nothing left to do.
+ */
+export async function syncTaxonomy(
+  db: Executor,
+): Promise<{ categoriesTouched: number }> {
+  const touched = new Set<string>();
+  await applyRenames(db, touched);
 
   const categories = await fetchCategories(db);
   const takenSlugs = new Set(categories.map((c) => c.slug));
@@ -433,22 +485,218 @@ export async function syncTaxonomy(db: Executor): Promise<void> {
         });
       category = created;
       categories.push(category);
-      console.log(
-        `[import-catalogo] Categoría "${entry.category}" creada (slug "${slug}").`,
-      );
+      touched.add(entry.category);
+      log(`Categoría "${entry.category}" creada (slug "${slug}").`);
     } else if (!category.isActive) {
       await db
         .update(productCategories)
         .set({ isActive: true })
         .where(eq(productCategories.id, category.id));
-      console.log(`[import-catalogo] Categoría "${entry.category}" reactivada.`);
+      touched.add(entry.category);
+      log(`Categoría "${entry.category}" reactivada.`);
     }
 
-    await syncSubtypes(db, category.id, entry.category, entry.subtypes);
+    await syncSubtypes(db, category.id, entry.category, entry.subtypes, touched);
   }
 
-  await applyDeactivations(db, categories);
-  await reorderCategories(db);
+  await applyDeactivations(db, categories, touched);
+  await reorderCategories(db, touched);
+  return { categoriesTouched: touched.size };
+}
+
+// --- Command line ------------------------------------------------------------
+
+/**
+ * The client's own HTML demo, and the folder the photos come from. Same default
+ * as scripts/extract-demo-catalog.ts on purpose: both read the same delivery.
+ * NOTHING here ever writes inside it -- it is the client's original.
+ */
+const DEFAULT_DEMO_DIR =
+  "/Users/coru/Desktop/Proyectos/surlabs-prod/web-unamargo/claude code unamargo";
+
+/**
+ * The `--` is not decoration: npm eats everything before it, so
+ * `npm run db:import-catalogo --dry-run` passes the flag to npm (which ignores
+ * it) and runs a REAL import. Every usage string in this file keeps it.
+ */
+const USAGE =
+  "Uso: npm run db:import-catalogo -- [--demo-dir <ruta>] [--path-prefix <prefijo>] [--dry-run]";
+
+const HELP = [
+  USAGE,
+  "",
+  "  --demo-dir <ruta>       Carpeta de la demo del cliente, de donde salen las fotos.",
+  `                          Por defecto: ${DEFAULT_DEMO_DIR}`,
+  "  --path-prefix <prefijo> Prefijo de las rutas del bucket, por ejemplo _prueba/",
+  "                          para poder borrar el ensayo después. Vacío por defecto.",
+  "  --dry-run               Corre todo y no escribe nada: la transacción se revierte",
+  "                          y no se sube ninguna foto.",
+].join("\n");
+
+type ImportOptions = {
+  /** Absolute path to an existing directory. Task 6 reads the photos there. */
+  demoDir: string;
+  /** Either "" or a prefix ending in "/". Task 6 puts it in front of every
+   * object key it writes to the bucket. */
+  pathPrefix: string;
+  /** Runs the whole import and keeps none of it: the transaction is rolled
+   * back and Task 6 uploads no file. */
+  dryRun: boolean;
+};
+
+/**
+ * Must exist and be a directory. A typo here is the difference between
+ * importing the client's photos and importing none, and without this check the
+ * run would only fail 34 products later, halfway through the bucket.
+ * A relative path resolves against the cwd, which `npm run` sets to the repo
+ * root.
+ */
+function resolveDemoDir(value: string): string {
+  const resolved = path.resolve(value);
+  let stats;
+  try {
+    stats = statSync(resolved);
+  } catch {
+    throw new ImportError(
+      `no existe el directorio de la demo: ${resolved}. Pasalo con --demo-dir <ruta>.`,
+    );
+  }
+  if (!stats.isDirectory()) {
+    throw new ImportError(`--demo-dir no es un directorio: ${resolved}.`);
+  }
+  return resolved;
+}
+
+/**
+ * The prefix ends up in front of every object key in the `productos` bucket, so
+ * it is held to the same safe alphabet the app uses for its own paths (see
+ * src/lib/storage.ts): a key that needs URL-encoding would be stored under one
+ * name and published under another.
+ *
+ * A missing trailing slash is ADDED, not rejected: `--path-prefix _prueba`
+ * would otherwise write `_pruebaMATE-RAN-01/foto.jpg`, real production keys
+ * that nobody would think to look for when cleaning up the rehearsal.
+ */
+function normalizePathPrefix(value: string): string {
+  if (value === "") return "";
+  if (value.startsWith("/")) {
+    throw new ImportError(
+      `--path-prefix no puede empezar con "/": las rutas del bucket son relativas (recibido "${value}").`,
+    );
+  }
+  if (!/^[A-Za-z0-9._/-]+$/.test(value)) {
+    throw new ImportError(
+      `--path-prefix solo admite letras, números, ".", "_", "-" y "/" (recibido "${value}").`,
+    );
+  }
+  const trimmed = value.replace(/\/+$/, "");
+  const segments = trimmed.split("/");
+  if (segments.some((p) => p === "" || p === "." || p === "..")) {
+    throw new ImportError(
+      `--path-prefix tiene un segmento vacío o relativo (recibido "${value}").`,
+    );
+  }
+  return `${trimmed}/`;
+}
+
+/**
+ * Strict on purpose: an unknown flag, a missing value or a stray argument stops
+ * the run instead of being ignored. This script writes the client's production
+ * catalog, and a `--dry-run` swallowed as a typo is a real import nobody meant
+ * to start. Accepts both `--flag value` and `--flag=value`.
+ */
+function parseOptions(argv: string[]): ImportOptions {
+  let demoDir = DEFAULT_DEMO_DIR;
+  let pathPrefix = "";
+  let dryRun = false;
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    // npm strips the first `--` before handing the rest over, but not every
+    // version of every runner does: skipping a literal one costs a line and
+    // saves the flags after it from being read as garbage.
+    if (arg === "--") continue;
+
+    const eq = arg.indexOf("=");
+    const flag = eq === -1 ? arg : arg.slice(0, eq);
+    const inline = eq === -1 ? undefined : arg.slice(eq + 1);
+
+    const takeValue = (): string => {
+      if (inline !== undefined) return inline;
+      const next = argv[i + 1];
+      // The value is required and cannot be the next flag: `--path-prefix
+      // --dry-run` has to fail, not prefix the bucket with "--dry-run" and
+      // silently run for real.
+      if (next === undefined || next.startsWith("--")) {
+        throw new ImportError(`la opción ${flag} necesita un valor.\n${USAGE}`);
+      }
+      i++;
+      return next;
+    };
+
+    switch (flag) {
+      case "--demo-dir":
+        demoDir = takeValue();
+        break;
+      case "--path-prefix":
+        pathPrefix = takeValue();
+        break;
+      case "--dry-run":
+        if (inline !== undefined) {
+          throw new ImportError(`--dry-run no lleva valor.\n${USAGE}`);
+        }
+        dryRun = true;
+        break;
+      default:
+        throw new ImportError(`opción desconocida: ${arg}.\n${USAGE}`);
+    }
+  }
+
+  return {
+    demoDir: resolveDemoDir(demoDir),
+    pathPrefix: normalizePathPrefix(pathPrefix),
+    dryRun,
+  };
+}
+
+// --- Summary -----------------------------------------------------------------
+
+/**
+ * What the run did, printed as one line at the end. Each phase reports its own
+ * numbers and main() collects them, so no phase has to know about the others.
+ */
+type ImportSummary = {
+  /** Categories whose row or subtypes the taxonomy sync wrote. Filled by
+   * syncTaxonomy (Task 3). */
+  categoriesTouched: number;
+  /** Products inserted, and products left alone because their SKU was already
+   * in the database. Filled by Task 5; honest zeros until then. */
+  productsCreated: number;
+  productsSkipped: number;
+  /** Photos uploaded and linked, and photos not uploaded because the product
+   * already had its own. Filled by Task 6; honest zeros until then. */
+  photosUploaded: number;
+  photosSkipped: number;
+};
+
+const EMPTY_SUMMARY: ImportSummary = {
+  categoriesTouched: 0,
+  productsCreated: 0,
+  productsSkipped: 0,
+  photosUploaded: 0,
+  photosSkipped: 0,
+};
+
+/**
+ * Label first, number second ("productos creados 34"), so nothing has to agree
+ * in gender or number with a count that may be 0, 1 or 42.
+ */
+function formatSummary(summary: ImportSummary): string {
+  return (
+    `categorías tocadas ${summary.categoriesTouched}; ` +
+    `productos creados ${summary.productsCreated}, salteados ${summary.productsSkipped}; ` +
+    `fotos subidas ${summary.photosUploaded}, salteadas ${summary.photosSkipped}`
+  );
 }
 
 // --- Runner -------------------------------------------------------------
@@ -479,31 +727,79 @@ function describeTarget(): string {
 }
 
 async function main(): Promise<void> {
-  console.log(`[import-catalogo] Base de datos destino: ${describeTarget()}.`);
+  const argv = process.argv.slice(2);
+  if (argv.includes("--help") || argv.includes("-h")) {
+    console.log(HELP);
+    return;
+  }
+  const options = parseOptions(argv);
+  // Set before the first line is printed and never again: from here on every
+  // line of the log says which of the two runs this was.
+  if (options.dryRun) linePrefix = `${PREFIX}[SIMULACRO]`;
+
+  log(
+    options.dryRun
+      ? `Base de datos destino: ${describeTarget()}. SIMULACRO: no se escribe nada, ni en la base ni en el bucket.`
+      : `Base de datos destino: ${describeTarget()}. CORRIDA REAL: los cambios quedan escritos.`,
+  );
+  log(`Demo del cliente (solo lectura): ${options.demoDir}`);
+  log(
+    `Prefijo de las rutas del bucket: ${
+      options.pathPrefix === "" ? "(ninguno)" : options.pathPrefix
+    }`,
+  );
+
+  const summary: ImportSummary = { ...EMPTY_SUMMARY };
   const { db, close } = createScriptDb();
   let started = false;
   try {
-    // One transaction for the whole taxonomy: ~30 statements in autocommit
-    // would leave the client's taxonomy half migrated if any of them failed.
-    // It is opened here and not inside syncTaxonomy so T4 can roll the same
-    // body back for --dry-run and T6 can upload photos outside of it.
-    //
-    // TRAP for T4/T5/T6: createScriptDb opens the client with `max: 1`, so the
-    // transaction holds the ONLY connection. Any query issued on the outer `db`
-    // handle while this is open waits for a connection that cannot be freed
-    // until the transaction ends: it hangs forever, with no error and no
-    // timeout. Inside here, always use `tx`.
-    await db.transaction(async (tx) => {
-      started = true;
-      await syncTaxonomy(tx);
-    });
-    console.log("[import-catalogo] Taxonomía sincronizada.");
+    try {
+      // One transaction for the whole taxonomy: ~30 statements in autocommit
+      // would leave the client's taxonomy half migrated if any of them failed.
+      // It is opened here and not inside syncTaxonomy so this runner can roll
+      // the same body back for --dry-run and T6 can upload photos outside it.
+      //
+      // TRAP for T5/T6: createScriptDb opens the client with `max: 1`, so the
+      // transaction holds the ONLY connection. Any query issued on the outer
+      // `db` handle while this is open waits for a connection that cannot be
+      // freed until the transaction ends: it hangs forever, with no error and
+      // no timeout. Inside here, always use `tx`.
+      await db.transaction(async (tx) => {
+        started = true;
+        const taxonomy = await syncTaxonomy(tx);
+        summary.categoriesTouched = taxonomy.categoriesTouched;
+        // T5 inserts the products HERE, on `tx` and never on `db`, and adds
+        // its counts to `summary`.
+
+        // --dry-run has no separate "what it would do" branch, which would
+        // drift from the real one the first time somebody edited only half of
+        // it: the real body runs, Postgres executes every statement, and the
+        // transaction never commits.
+        if (options.dryRun) throw new DryRunRollback();
+      });
+      log("Cambios confirmados en la base.");
+    } catch (error) {
+      if (!(error instanceof DryRunRollback)) throw error;
+      log(
+        "Transacción revertida a propósito: la base quedó exactamente como estaba.",
+      );
+    }
+
+    // T6 uploads the photos HERE, OUTSIDE the transaction (a bucket does not
+    // roll back) and only when options.dryRun is false. It reads the files
+    // from options.demoDir and prefixes its keys with options.pathPrefix.
+
+    log(
+      `Resumen${options.dryRun ? " del SIMULACRO (nada de esto se escribió)" : ""}: ${formatSummary(summary)}.`,
+    );
   } catch (error) {
     // The log above lists writes that no longer exist. Say so: an operator
     // reading a failed production run has to know whether the rename stuck.
+    // No summary follows a failure: its numbers would describe a state that
+    // was rolled back.
     if (started) {
-      console.error(
-        "[import-catalogo] La transacción se revirtió: la base quedó como estaba antes de esta corrida.",
+      logError(
+        "La transacción se revirtió: la base quedó como estaba antes de esta corrida.",
       );
     }
     throw error;
@@ -517,7 +813,7 @@ main().catch((error: unknown) => {
   // empty message, and a bare "ERROR:" line tells the operator nothing.
   const message =
     error instanceof Error ? error.message || error.name : String(error);
-  console.error(`[import-catalogo] ERROR: ${message}`);
+  logError(`ERROR: ${message}`);
   // Expected failures are self-explanatory; anything else keeps its stack.
   if (!(error instanceof ImportError)) console.error(error);
   process.exit(1);
