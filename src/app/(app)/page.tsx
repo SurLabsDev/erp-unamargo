@@ -3,6 +3,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Card,
   CardContent,
@@ -15,7 +16,7 @@ import { GraficoLinea } from "@/components/graficos/linea";
 import { GraficoMeses } from "@/components/graficos/meses";
 import { requireUser } from "@/lib/auth-helpers";
 import { fromCents, toCents } from "@/lib/domain/cents";
-import { addDaysISO } from "@/lib/domain/dates";
+import { addDaysISO, diffDaysISO } from "@/lib/domain/dates";
 import {
   diasDeCobertura,
   reparto,
@@ -30,6 +31,7 @@ import {
   formatMoney,
   todayInTimeZone,
 } from "@/lib/format";
+import { singleParam } from "@/lib/params";
 import { getSettings } from "@/lib/settings";
 import { countActiveCampaigns } from "./descuentos/queries";
 import { periodTotals } from "./dinero/queries";
@@ -43,8 +45,6 @@ import {
 } from "./queries";
 
 export const metadata: Metadata = { title: "Panel" };
-
-const DIAS = 30;
 
 function formatDelta(delta: number): string {
   return delta > 0 ? `+${formatInteger(delta)}` : formatInteger(delta);
@@ -94,15 +94,34 @@ function SinDatos({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default async function PanelPage() {
+export default async function PanelPage(props: PageProps<"/">) {
   const user = await requireUser();
   const settings = await getSettings();
   const hoy = todayInTimeZone(settings.timezone);
-  const period = resolvePeriod({}, hoy);
 
-  const desde = addDaysISO(hoy, -(DIAS - 1));
-  const desdePrevio = addDaysISO(hoy, -(DIAS * 2 - 1));
+  const searchParams = await props.searchParams;
+  const period = resolvePeriod(
+    {
+      preset: singleParam(searchParams.periodo),
+      fromISO: singleParam(searchParams.desde),
+      toISO: singleParam(searchParams.hasta),
+    },
+    hoy,
+  );
+
+  const desde = period.fromISO;
+  // El periodo se corta HOY aunque el preset llegue mas lejos. "Mes actual" va
+  // hasta fin de mes: sin este tope, los dias que todavia no pasaron se dibujan
+  // en cero y parece que las ventas se derrumbaron, y encima la comparacion
+  // enfrenta 21 dias de datos contra 31 del periodo anterior.
+  const hasta = period.toISO > hoy ? hoy : period.toISO;
+  // El periodo anterior es del MISMO largo y termina el dia antes: comparar un
+  // mes contra 30 dias fijos daria una variacion inventada.
+  const DIAS = diffDaysISO(desde, hasta) + 1;
   const hastaPrevio = addDaysISO(desde, -1);
+  const desdePrevio = addDaysISO(hastaPrevio, -(DIAS - 1));
+
+  const presetHref = (preset: string) => `/?periodo=${preset}`;
 
   const [
     lowStock,
@@ -120,16 +139,16 @@ export default async function PanelPage() {
     listRecentMovements(5),
     periodTotals(period),
     countActiveCampaigns(hoy),
-    salidasDelPeriodo(desde, hoy),
+    salidasDelPeriodo(desde, hasta),
     salidasDelPeriodo(desdePrevio, hastaPrevio),
-    productosConSalidas(desde, hoy),
+    productosConSalidas(desde, hasta),
     valorDelInventario(),
     cajaPorMes(6),
-    egresosPorCategoria(desde, hoy),
+    egresosPorCategoria(desde, hasta),
   ]);
 
   const summary = computePeriodSummary(settings.initialBalance, totals);
-  const serie = salidasPorDia(salidas, desde, hoy);
+  const serie = salidasPorDia(salidas, desde, hasta);
   const unidades = salidas.reduce((a, s) => a + s.cantidad, 0);
   const unidadesPrevias = salidasPrevias.reduce((a, s) => a + s.cantidad, 0);
   const cambio = variacion(unidades, unidadesPrevias);
@@ -178,8 +197,47 @@ export default async function PanelPage() {
     <div>
       <PageHeader
         title={`Hola, ${user.name.split(" ")[0]}`}
-        description={`Los últimos ${DIAS} días de la operación.`}
+        description="Resumen de la operación."
       />
+
+      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border p-3">
+        {(
+          [
+            ["mes", "Mes actual"],
+            ["mes-anterior", "Mes anterior"],
+            ["30-dias", "Últimos 30 días"],
+          ] as const
+        ).map(([preset, label]) => (
+          <Button
+            key={preset}
+            asChild
+            size="sm"
+            variant={period.preset === preset ? "default" : "outline"}
+          >
+            <Link href={presetHref(preset)}>{label}</Link>
+          </Button>
+        ))}
+        <form method="GET" className="ml-auto flex flex-wrap items-center gap-2">
+          <input type="hidden" name="periodo" value="custom" />
+          <Input
+            type="date"
+            name="desde"
+            defaultValue={period.preset === "custom" ? period.fromISO : ""}
+            aria-label="Desde"
+            className="w-auto"
+          />
+          <Input
+            type="date"
+            name="hasta"
+            defaultValue={period.preset === "custom" ? period.toISO : ""}
+            aria-label="Hasta"
+            className="w-auto"
+          />
+          <Button type="submit" size="sm" variant="outline">
+            Aplicar
+          </Button>
+        </form>
+      </div>
 
       {activeCampaigns > 0 && (
         <Link
@@ -198,14 +256,14 @@ export default async function PanelPage() {
       {/* --- Los cuatro numeros de arriba ------------------------------- */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Kpi
-          titulo={`Unidades que salieron (${DIAS} días)`}
+          titulo={`Unidades que salieron (${formatInteger(DIAS)} días)`}
           valor={formatInteger(unidades)}
           pie={
             cambio === null
               ? unidadesPrevias === 0 && unidades > 0
                 ? "Primer período con movimiento"
                 : "Sin movimientos para comparar"
-              : `${cambio > 0 ? "+" : ""}${cambio.toFixed(0)}% contra los ${DIAS} días anteriores`
+              : `${cambio > 0 ? "+" : ""}${cambio.toFixed(0)}% contra los ${formatInteger(DIAS)} días anteriores`
           }
           tono={cambio === null ? undefined : cambio >= 0 ? "sube" : "baja"}
         />
@@ -244,19 +302,12 @@ export default async function PanelPage() {
         <CardHeader>
           <CardTitle>Salidas por día</CardTitle>
           <CardDescription>
-            Unidades que salieron del depósito cada día de los últimos {DIAS}.
+            Unidades que salieron del depósito cada día del período.
           </CardDescription>
         </CardHeader>
         <CardContent>
           {hayMovimientos ? (
-            <>
               <GraficoLinea serie={serie} etiqueta="Salidas por día" />
-              <div className="mt-2 flex justify-between text-xs text-muted-foreground">
-                <span>{serie[0]?.fecha.slice(8)}/{serie[0]?.fecha.slice(5, 7)}</span>
-                <span>Máximo del período: {formatInteger(Math.max(...serie.map((p) => p.valor)))}</span>
-                <span>{hoy.slice(8)}/{hoy.slice(5, 7)}</span>
-              </div>
-            </>
           ) : (
             <SinDatos>
               Todavía no hay salidas registradas. En cuanto empieces a cargar
@@ -272,7 +323,7 @@ export default async function PanelPage() {
           <CardHeader>
             <CardTitle>Lo que más sale</CardTitle>
             <CardDescription>
-              Unidades que salieron en {DIAS} días. Una salida puede ser una
+              Unidades que salieron en el período. Una salida puede ser una
               venta o una baja: el libro registra el movimiento, no el motivo.
             </CardDescription>
           </CardHeader>
@@ -297,7 +348,7 @@ export default async function PanelPage() {
           <CardHeader>
             <CardTitle>Se acaban primero</CardTitle>
             <CardDescription>
-              Cuántos días dura el stock al ritmo de los últimos {DIAS}. Ordena
+              Cuántos días dura el stock al ritmo del período. Ordena
               mejor que el mínimo fijo: 10 unidades que vuelan urgen más que 3
               que no se mueven.
             </CardDescription>
@@ -346,7 +397,7 @@ export default async function PanelPage() {
           <CardHeader>
             <CardTitle>Stock parado</CardTitle>
             <CardDescription>
-              Tienen stock y no salió ninguna unidad en {DIAS} días.
+              Tienen stock y no salió ninguna unidad en el período.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -430,7 +481,7 @@ export default async function PanelPage() {
           <CardHeader>
             <CardTitle>En qué se va la plata</CardTitle>
             <CardDescription>
-              Egresos por categoría en los últimos {DIAS} días.
+              Egresos por categoría en el período.
             </CardDescription>
           </CardHeader>
           <CardContent>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   diasDeCobertura,
+  escalaY,
   reparto,
   salidasPorDia,
   valorInventarioCentavos,
@@ -96,5 +97,38 @@ describe("reparto", () => {
 
   it("no divide por cero cuando no hay nada", () => {
     expect(reparto([{ etiqueta: "a", valor: 0 }])[0].porcentaje).toBe(0);
+  });
+});
+
+describe("escalaY", () => {
+  it("redondea el tope para arriba a un corte legible", () => {
+    // El paso ideal seria 23,5; sube a 25 y el eje queda 0 / 25 / 50.
+    const { tope, valores } = escalaY(47, 2);
+    expect(tope).toBe(50);
+    expect(valores).toEqual([0, 25, 50]);
+  });
+
+  it("no usa marcas fraccionarias: el eje cuenta unidades enteras", () => {
+    for (const m of [3, 7, 9, 11, 23]) {
+      for (const v of escalaY(m, 4).valores) expect(Number.isInteger(v)).toBe(true);
+    }
+  });
+
+  it("usa pasos de 1, 2, 5 o 10 por decada", () => {
+    expect(escalaY(15, 4).tope).toBe(20); // paso 5
+    expect(escalaY(8, 4).tope).toBe(8); // paso 2
+    expect(escalaY(400, 4).tope).toBe(400); // paso 100
+  });
+
+  it("nunca deja el maximo afuera del eje", () => {
+    for (const m of [1, 3, 7, 13, 47, 99, 101, 512, 1234]) {
+      expect(escalaY(m, 4).tope).toBeGreaterThanOrEqual(m);
+    }
+  });
+
+  it("devuelve una escala usable con maximo cero, sin dividir por cero", () => {
+    const { tope, valores } = escalaY(0, 4);
+    expect(tope).toBe(4);
+    expect(valores).toEqual([0, 1, 2, 3, 4]);
   });
 });

@@ -31,6 +31,27 @@ export function addDaysISO(dateISO: string, days: number): string {
  * UTC instant at which `dateISO` starts (00:00:00) in `timeZone`.
  * Two-pass correction converges for real-world offsets (incl. DST edges).
  */
+/**
+ * Dias entre dos fechas ISO, contando de la primera a la segunda.
+ *
+ * Se calcula en UTC a proposito: las dos fechas son dias calendario, no
+ * instantes, asi que el horario de verano no tiene por que meterse. Hacerlo en
+ * hora local daria 0 o 2 en el dia en que cambia la hora.
+ */
+export function diffDaysISO(fromISO: string, toISO: string): number {
+  const a = Date.UTC(
+    Number(fromISO.slice(0, 4)),
+    Number(fromISO.slice(5, 7)) - 1,
+    Number(fromISO.slice(8, 10)),
+  );
+  const b = Date.UTC(
+    Number(toISO.slice(0, 4)),
+    Number(toISO.slice(5, 7)) - 1,
+    Number(toISO.slice(8, 10)),
+  );
+  return Math.round((b - a) / 86_400_000);
+}
+
 export function zonedMidnightUtc(dateISO: string, timeZone: string): Date {
   if (!isValidISODate(dateISO)) {
     throw new Error(`Fecha inválida: ${dateISO}`);

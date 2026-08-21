@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addDaysISO,
+  diffDaysISO,
   isValidISODate,
   zonedDateRangeToUtc,
   zonedMidnightUtc,
@@ -61,5 +62,23 @@ describe("zonedDateRangeToUtc", () => {
       from: undefined,
       to: undefined,
     });
+  });
+});
+
+describe("diffDaysISO", () => {
+  it("cuenta los dias entre dos fechas", () => {
+    expect(diffDaysISO("2026-08-01", "2026-08-31")).toBe(30);
+    expect(diffDaysISO("2026-08-01", "2026-08-01")).toBe(0);
+  });
+
+  it("cruza meses y años", () => {
+    expect(diffDaysISO("2026-12-31", "2027-01-01")).toBe(1);
+    expect(diffDaysISO("2024-02-28", "2024-03-01")).toBe(2); // bisiesto
+  });
+
+  it("no se rompe con el cambio de hora: se cuenta en UTC", () => {
+    // En Uruguay no hay horario de verano hoy, pero el calculo no debe
+    // depender de eso.
+    expect(diffDaysISO("2026-10-01", "2026-10-02")).toBe(1);
   });
 });

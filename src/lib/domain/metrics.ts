@@ -102,3 +102,35 @@ export function reparto<T extends { etiqueta: string; valor: number }>(
     .map((f) => ({ ...f, porcentaje: total > 0 ? (f.valor / total) * 100 : 0 }))
     .sort((a, b) => b.valor - a.valor);
 }
+
+/**
+ * Escala del eje vertical: redondea el maximo para arriba a un numero
+ * "redondo" y devuelve las marcas.
+ *
+ * Se redondea a proposito. Si el pico del periodo es 47, un eje que termina en
+ * 47 pone la marca de arriba en un numero que no significa nada; terminando en
+ * 50 las marcas caen en 0, 25 y 50, que se leen de un vistazo.
+ *
+ * Con maximo 0 -un periodo sin salidas- igual devuelve una escala usable, para
+ * que el grafico se dibuje plano en la base y no se rompa dividiendo por cero.
+ */
+export function escalaY(maximo: number, marcas = 4): { tope: number; valores: number[] } {
+  if (maximo <= 0) return { tope: marcas, valores: Array.from({ length: marcas + 1 }, (_, i) => i) };
+
+  // El paso se busca entre 1, 2, 2.5, 5 y 10 por decada: son los cortes que la
+  // gente lee sin pensar. El 2,5 esta porque sin el un pico de 47 con dos
+  // marcas obliga a un eje que llega a 100, con la mitad del grafico vacia.
+  //
+  // Se descartan los pasos que no dan entero: el eje cuenta UNIDADES de
+  // producto, y una marca en 2,5 unidades no significa nada.
+  const crudo = maximo / marcas;
+  const decada = Math.pow(10, Math.floor(Math.log10(crudo)));
+  const paso =
+    [1, 2, 2.5, 5, 10]
+      .map((m) => m * decada)
+      .filter((p) => Number.isInteger(p))
+      .find((p) => p >= crudo) ?? Math.ceil(crudo);
+  const tope = paso * marcas;
+
+  return { tope, valores: Array.from({ length: marcas + 1 }, (_, i) => i * paso) };
+}
