@@ -21,6 +21,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { Surlabs, Unamargo } from "@/components/marca";
 import { cn } from "@/lib/utils";
 
 type NavItem = { href: string; label: string; adminOnly?: boolean };
@@ -67,7 +68,8 @@ export function AppHeader(props: {
           </SheetTrigger>
           <SheetContent side="left" className="w-64">
             <SheetHeader>
-              <SheetTitle className="text-left text-sm font-semibold uppercase tracking-[0.2em]">
+              <SheetTitle className="flex items-center gap-2 text-left text-sm font-semibold uppercase tracking-[0.2em]">
+                <Unamargo className="h-4 w-auto" />
                 {companyName}
               </SheetTitle>
             </SheetHeader>
@@ -93,9 +95,17 @@ export function AppHeader(props: {
 
         <Link
           href="/"
-          className="text-sm font-semibold uppercase tracking-[0.2em]"
+          aria-label={`${companyName}, ir al panel`}
+          className="flex items-center gap-2.5 transition-opacity hover:opacity-80"
         >
-          {companyName}
+          <Surlabs className="size-6 shrink-0 text-foreground" />
+          <span aria-hidden className="text-xs text-muted-foreground">
+            ×
+          </span>
+          <Unamargo className="h-5 w-auto shrink-0 text-foreground" />
+          <span className="hidden text-sm font-semibold uppercase tracking-[0.2em] sm:inline">
+            {companyName}
+          </span>
         </Link>
 
         {/* Desktop nav */}
