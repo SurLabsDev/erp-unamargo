@@ -39,9 +39,12 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  /* design.md §4: UN radio para todo. Los seis escalones de shadcn apuntan
-     al mismo token a proposito: para ablandar o afilar el producto entero
-     se toca --radius y nada mas. No reintroducir la escala. */
+  /* design.md §4: DOS radios, y solo dos, con una regla que decide cual.
+     Lo interactivo que se toca (botones, chips) va en pill, que es la firma
+     visual de Un Amargo; toda superficie (cards, inputs, tablas, dialogos)
+     va en 6px. Los seis escalones de shadcn siguen apuntando al mismo token
+     a proposito: no reintroducir la escala. */
+  --radius-pill: 100px;
   --radius-sm: var(--radius);
   --radius-md: var(--radius);
   --radius-lg: var(--radius);
@@ -52,94 +55,119 @@
 }
 
 :root {
-  /* design.md §1: ningun neutro con croma cero y ninguno blanco o negro puro.
-     Un solo tono calido (80/75/70/60) para TODOS los neutros: mezclar grises
-     calidos y frios es lo que hace que un producto se vea sucio.
-     Contrastes verificados por calculo, no a ojo (design.md §2 y §3). */
-  --background: oklch(0.995 0.002 80); /* #fefdfc */
-  --foreground: oklch(0.18 0.006 60); /* #14110f · 18.51:1 sobre background */
-  --card: oklch(0.995 0.002 80);
-  --card-foreground: oklch(0.18 0.006 60);
-  --popover: oklch(0.995 0.002 80);
-  --popover-foreground: oklch(0.18 0.006 60);
+  /* Los valores son los MISMOS hex que `web-unamargo/src/app/globals.css`, a
+     proposito y en hex en vez de oklch: la marca esta definida en hex del otro
+     lado, y traducir a oklch agrega un paso donde un valor puede alejarse de la
+     marca sin que nadie lo note. Asi verificar que los dos repos pintan igual
+     es un grep.
+     Contrastes calculados, no mirados a ojo (design.md §2 y §3). */
+  --background: #fafafa; /* campo de la marca */
+  --foreground: #0a0a0a; /* tinta de la marca · 18.97:1 */
+  --card: #ffffff; /* papel de la marca */
+  --card-foreground: #0a0a0a;
+  --popover: #ffffff;
+  --popover-foreground: #0a0a0a;
 
-  /* design.md §2: UN acento, el ember de Surlabs, y solo en accion primaria,
-     estado activo y foco. El texto encima va en tinta, NUNCA blanco:
-     tinta sobre ember 5.08:1 (pasa), blanco sobre ember 3.70:1 (no pasa). */
-  --primary: oklch(0.636 0.187 40); /* #e4571b */
-  --primary-foreground: oklch(0.18 0.006 60); /* 5.08:1 sobre --primary */
+  /* UN acento: el verde de Un Amargo.
+     OJO, esto INVIERTE la regla que regia con el naranja de Surlabs. El ember
+     era claro y pedia texto tinta (blanco daba 3.70:1 y no pasaba). El verde es
+     oscuro y pide texto BLANCO: blanco da 6.24:1 y pasa, tinta da 3.17:1 y no.
+     No es preferencia, es el numero. Un verde con texto negro no pasa AA. */
+  --primary: #0e6e50;
+  --primary-foreground: #ffffff; /* 6.24:1 sobre --primary */
 
-  --secondary: oklch(0.968 0.004 80);
-  --secondary-foreground: oklch(0.18 0.006 60);
-  --muted: oklch(0.968 0.004 80); /* #f6f4f1 */
-  --muted-foreground: oklch(0.505 0.01 70); /* #68645f · 5.78:1 */
-  --accent: oklch(
-    0.968 0.004 80
-  ); /* superficie de hover, NO el acento de marca */
-  --accent-foreground: oklch(0.18 0.006 60);
-  --destructive: oklch(0.577 0.245 27.325); /* #e7000b · 4.69:1, pasa AA */
+  --secondary: #f2f2f2; /* humo de la marca */
+  --secondary-foreground: #0a0a0a;
+  --muted: #f2f2f2;
+  --muted-foreground: #555555; /* gris de parrafo de la marca · 7.14:1 */
+  --accent: #f2f2f2; /* superficie de hover, NO el acento de marca */
+  --accent-foreground: #0a0a0a;
+  --destructive: #b3261e; /* 6.26:1 */
 
   /* design.md §3: --border y --input NO son el mismo uso y por eso no comparten
-     valor. --border es filete decorativo (1.32:1). --input es el limite visual
-     de un control y WCAG 1.4.11 le exige 3:1: oklch(0.66) da 3.07:1, y todo lo
-     mas claro que eso no llega. NO subir esta luminosidad. */
-  --border: oklch(0.9 0.006 80); /* #e0deda · 1.32:1 · solo decorativo */
-  --input: oklch(0.66 0.01 75); /* #96918c · 3.07:1 · limite de control */
-  --ring: oklch(0.636 0.187 40); /* ember · 3.64:1 sobre background */
+     valor. --border es filete decorativo (1.19:1, la linea de la marca).
+     --input es el limite visual de un control y WCAG 1.4.11 le exige 3:1:
+     #8f8f8f da 3.10:1, y todo lo mas claro que eso no llega. NO aclararlo. */
+  --border: #e8e8e8; /* linea de la marca · solo decorativo */
+  --input: #8f8f8f; /* 3.10:1 · limite de control */
+  --ring: #0e6e50; /* verde · 5.98:1 sobre el fondo */
 
-  --chart-1: oklch(0.636 0.187 40);
-  --chart-2: oklch(0.505 0.01 70);
-  --chart-3: oklch(0.42 0.012 70);
-  --chart-4: oklch(0.34 0.01 65);
-  --chart-5: oklch(0.26 0.008 60);
-  --radius: 0.375rem; /* 6px. El unico radio del sistema (design.md §4). */
-  --sidebar: oklch(0.978 0.003 80);
-  --sidebar-foreground: oklch(0.18 0.006 60);
-  --sidebar-primary: oklch(0.636 0.187 40);
-  --sidebar-primary-foreground: oklch(0.18 0.006 60);
-  --sidebar-accent: oklch(0.955 0.005 80);
-  --sidebar-accent-foreground: oklch(0.18 0.006 60);
-  --sidebar-border: oklch(0.9 0.006 80);
-  --sidebar-ring: oklch(0.636 0.187 40);
+  /* Un solo color de marca en las graficas y el resto neutros: si cada serie
+     tuviera su color, la pantalla tendria cinco acentos. */
+  --chart-1: #0e6e50;
+  --chart-2: #555555;
+  --chart-3: #767676;
+  --chart-4: #9a9a9a;
+  --chart-5: #c4c4c4;
+  --radius: 0.375rem; /* 6px. El radio de las superficies (design.md §4). */
+  --sidebar: #ffffff;
+  --sidebar-foreground: #0a0a0a;
+  --sidebar-primary: #0e6e50;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f2f2f2;
+  --sidebar-accent-foreground: #0a0a0a;
+  --sidebar-border: #e8e8e8;
+  --sidebar-ring: #0e6e50;
 }
 
 .dark {
-  /* Paleta del formulario de Surlabs, misma familia calida que el modo claro y
-     con los mismos contrastes medidos. Se usa SOLO en /login: el resto del ERP
-     es claro porque se mira ocho horas seguidas (design.md, tabla final). */
-  --background: oklch(0.155 0.003 68); /* #0d0c0b ink */
-  --foreground: oklch(0.942 0.012 80); /* #f0ebe3 bone · 16.47:1 */
-  --card: oklch(0.197 0.007 78); /* #171512 ink-raised */
-  --card-foreground: oklch(0.942 0.012 80);
-  --popover: oklch(0.197 0.007 78);
-  --popover-foreground: oklch(0.942 0.012 80);
-  --primary: oklch(0.636 0.187 40); /* ember, el mismo que en claro */
-  --primary-foreground: oklch(0.155 0.003 68); /* tinta · 5.28:1 sobre ember */
-  --secondary: oklch(0.197 0.007 78);
-  --secondary-foreground: oklch(0.942 0.012 80);
-  --muted: oklch(0.197 0.007 78);
-  --muted-foreground: oklch(0.696 0.018 79); /* bone-dim · 7.19:1 */
-  --accent: oklch(0.235 0.008 78);
-  --accent-foreground: oklch(0.942 0.012 80);
-  --destructive: oklch(0.704 0.191 22.216); /* 5.62:1 sobre ink */
-  --border: oklch(0.29 0.008 78); /* filete decorativo */
-  --input: oklch(
-    0.512 0.014 80
-  ); /* #6b665e bone-faint · 3.43:1 · limite de control */
-  --ring: oklch(0.636 0.187 40); /* ember · 5.28:1 */
-  --chart-1: oklch(0.636 0.187 40);
-  --chart-2: oklch(0.696 0.018 79);
-  --chart-3: oklch(0.6 0.016 79);
-  --chart-4: oklch(0.512 0.014 80);
-  --chart-5: oklch(0.42 0.012 79);
-  --sidebar: oklch(0.197 0.007 78);
-  --sidebar-foreground: oklch(0.942 0.012 80);
-  --sidebar-primary: oklch(0.636 0.187 40);
-  --sidebar-primary-foreground: oklch(0.155 0.003 68);
-  --sidebar-accent: oklch(0.235 0.008 78);
-  --sidebar-accent-foreground: oklch(0.942 0.012 80);
-  --sidebar-border: oklch(0.29 0.008 78);
-  --sidebar-ring: oklch(0.636 0.187 40);
+  /* Se usa SOLO en /login: el resto del ERP es claro porque se mira ocho horas
+     seguidas (design.md, tabla final). Mismo negro de la marca que la web.
+     El acento es el MISMO verde con el MISMO texto blanco que en claro: no
+     hace falta un verde distinto por modo, y tener uno solo es una regla
+     menos que se puede romper. */
+  --background: #0a0a0a; /* tinta de la marca */
+  --foreground: #f2f2f2; /* 17.68:1 */
+  --card: #161616;
+  --card-foreground: #f2f2f2;
+  --popover: #161616;
+  --popover-foreground: #f2f2f2;
+  --primary: #0e6e50; /* 3.17:1 contra el fondo: pasa el 3:1 de WCAG 1.4.11
+                         que le corresponde al limite de un control */
+  --primary-foreground: #ffffff; /* 6.24:1 sobre el verde */
+  --secondary: #161616;
+  --secondary-foreground: #f2f2f2;
+  --muted: #161616;
+  --muted-foreground: #a8a8a8; /* 8.33:1 */
+  --accent: #1f1f1f;
+  --accent-foreground: #f2f2f2;
+  --destructive: #f2645a; /* 6.36:1 */
+  --border: #262626; /* filete decorativo */
+  --input: #6b6b6b; /* 3.72:1 · limite de control */
+  --ring: #128a64; /* el verde vivo, que sobre negro se ve mejor · 4.57:1 */
+  --chart-1: #128a64;
+  --chart-2: #a8a8a8;
+  --chart-3: #8a8a8a;
+  --chart-4: #6b6b6b;
+  --chart-5: #4a4a4a;
+  --sidebar: #161616;
+  --sidebar-foreground: #f2f2f2;
+  --sidebar-primary: #0e6e50;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #1f1f1f;
+  --sidebar-accent-foreground: #f2f2f2;
+  --sidebar-border: #262626;
+  --sidebar-ring: #128a64;
+}
+
+@layer components {
+  /* design.md, "cosas que me costaron tiempo": una clase suelta fuera de capa
+     le gana a las utilidades de Tailwind pasara lo que pasara. Va aca adentro
+     para que `text-primary` al lado la pueda pisar. */
+
+  /* El titular de la marca: peso 700 y tracking negativo, como en la web.
+     Lo que NO se copia de la web es el tamano: alla el h1 es enorme, aca
+     design.md §5 manda jerarquia chica porque hay muchas pantallas. */
+  .type-display {
+    font-weight: 700;
+    letter-spacing: -0.035em;
+  }
+
+  /* Toda columna de numeros va tabulada: sin esto los importes bailan de fila
+     en fila y la columna se lee torcida (design.md §5). */
+  .cifras {
+    font-variant-numeric: tabular-nums;
+  }
 }
 
 @layer base {

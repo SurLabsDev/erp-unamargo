@@ -78,13 +78,13 @@ export default async function ProductDetailPage(
       <dl className="grid grid-cols-2 gap-4 rounded-lg border p-4 sm:grid-cols-3">
         <div>
           <dt className="text-xs text-muted-foreground">Stock actual</dt>
-          <dd className="text-2xl font-semibold tabular-nums">
+          <dd className="type-display cifras text-2xl">
             {formatInteger(product.currentStock)}
           </dd>
         </div>
         <div>
           <dt className="text-xs text-muted-foreground">Stock mínimo</dt>
-          <dd className="text-2xl font-semibold tabular-nums">
+          <dd className="type-display cifras text-2xl">
             {product.minStock === 0 ? (
               <span className="text-muted-foreground">—</span>
             ) : (

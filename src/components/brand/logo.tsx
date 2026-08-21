@@ -7,8 +7,9 @@
  * sincroniza: si el trazado cambia en la landing, hay que traerlo a mano aca.
  *
  * Dos diferencias deliberadas con el original:
- *  - El color del acento sale de `--color-primary` (el token de este repo) en
- *    vez de `--color-ember`, que aca no existe. Es el mismo #e4571b.
+ *  - Va monocromo. En la landing la mitad sur lleva el ember de Surlabs; aca el
+ *    acento del producto es el verde del cliente, y pintar de verde la brujula
+ *    de Surlabs le daria un color que no es suyo. Ver `marca.tsx`.
  *  - Sin la clase `.needle` ni su animacion: design.md §8 pide movimiento casi
  *    nulo, y una aguja que gira en la pantalla de login envejece rapido.
  */
@@ -44,8 +45,8 @@ export function LogoMark({ className = "size-7" }: { className?: string }) {
         fill="currentColor"
         fillOpacity="0.25"
       />
-      {/* Mitad sur: el acento. Es el punto del logo. */}
-      <path d="M12 20.4 8.9 12h6.2L12 20.4Z" fill="var(--color-primary)" />
+      {/* Mitad sur: plena contra el norte al 25%. Ese contraste es el punto. */}
+      <path d="M12 20.4 8.9 12h6.2L12 20.4Z" fill="currentColor" />
     </svg>
   );
 }

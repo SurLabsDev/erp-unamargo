@@ -56,28 +56,33 @@ function Kpi({
   titulo,
   valor,
   pie,
-  tono,
+  alerta,
 }: {
   titulo: string;
   valor: string;
   pie?: string;
-  tono?: "sube" | "baja";
+  /** Marca el pie como algo que hay que atender. NO es "el numero bajo": una
+   *  baja de 5% contra el periodo anterior es ruido normal, y pintarla de rojo
+   *  entrena al cliente a ignorar el rojo justo para cuando pase algo de
+   *  verdad. Se reserva para lo accionable (productos por debajo del minimo). */
+  alerta?: boolean;
 }) {
   return (
     <Card>
       <CardHeader className="pb-2">
         <CardDescription>{titulo}</CardDescription>
-        <CardTitle className="text-3xl tabular-nums">{valor}</CardTitle>
+        <CardTitle className="type-display cifras text-3xl">{valor}</CardTitle>
       </CardHeader>
       {pie && (
         <CardContent className="pt-0">
+          {/* El verde NO se usa para "el numero subio". Es el acento de la
+              marca y en este ERP significa accion, estado activo y foco
+              (design.md §2); si ademas significara "buena cifra", el mismo
+              verde diria dos cosas y el boton verde de al lado se leeria como
+              un estado. La direccion ya la dice el signo del texto. */}
           <p
             className={`text-xs ${
-              tono === "sube"
-                ? "text-primary"
-                : tono === "baja"
-                  ? "text-destructive"
-                  : "text-muted-foreground"
+              alerta ? "text-destructive" : "text-muted-foreground"
             }`}
           >
             {pie}
@@ -265,7 +270,6 @@ export default async function PanelPage(props: PageProps<"/">) {
                 : "Sin movimientos para comparar"
               : `${cambio > 0 ? "+" : ""}${cambio.toFixed(0)}% contra los ${formatInteger(DIAS)} días anteriores`
           }
-          tono={cambio === null ? undefined : cambio >= 0 ? "sube" : "baja"}
         />
         <Kpi
           titulo="Saldo del período"
@@ -293,7 +297,7 @@ export default async function PanelPage(props: PageProps<"/">) {
               ? "Nadie por debajo del mínimo"
               : "Por debajo del mínimo o sin stock"
           }
-          tono={lowStock.length > 0 ? "baja" : undefined}
+          alerta={lowStock.length > 0}
         />
       </div>
 

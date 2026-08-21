@@ -1,7 +1,7 @@
 export function PageHeader(props: { title: string; description?: string }) {
   return (
     <div className="mb-6 grid gap-1">
-      <h1 className="text-2xl font-semibold tracking-tight">{props.title}</h1>
+      <h1 className="type-display text-2xl">{props.title}</h1>
       {props.description ? (
         <p className="text-sm text-muted-foreground">{props.description}</p>
       ) : null}

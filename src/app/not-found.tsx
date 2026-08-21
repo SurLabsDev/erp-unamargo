@@ -8,7 +8,7 @@ export default function NotFoundPage() {
       <p className="text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
         404
       </p>
-      <h1 className="text-xl font-semibold tracking-tight">
+      <h1 className="type-display text-xl">
         Página no encontrada
       </h1>
       <p className="max-w-sm text-sm text-muted-foreground">

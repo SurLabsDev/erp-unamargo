@@ -41,7 +41,7 @@ export default async function CampaignDetailPage(
         </Link>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="grid gap-1">
-            <h1 className="text-2xl font-semibold tracking-tight">
+            <h1 className="type-display text-2xl">
               {campaign.name}
             </h1>
             <p className="text-sm text-muted-foreground">

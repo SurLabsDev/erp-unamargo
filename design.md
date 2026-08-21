@@ -1,6 +1,14 @@
 # Diseño
 
-Cómo conseguir en este ERP la prolijidad del login de `formulario.surlabs.tech`.
+Cómo conseguir en este ERP la prolijidad del login de `formulario.surlabs.tech`,
+**con la identidad de Un Amargo**.
+
+> **De dónde salen los colores.** Los tokens de `globals.css` son los mismos hex
+> que `web-unamargo/src/app/globals.css`, y están escritos en hex y no en oklch
+> a propósito: la marca está definida en hex del otro lado, y traducir agrega un
+> paso donde un valor puede alejarse de la marca sin que nadie lo note. Así
+> verificar que los dos repos pintan igual es un grep. Si la marca cambia allá,
+> cambia acá.
 
 Esto **no** pide tirar shadcn. shadcn está bien y ya está instalado: lo que hay
 que hacer es afinarle los tokens y respetar seis o siete reglas. La prolijidad
@@ -45,6 +53,16 @@ todos por igual. **Un solo tono para todos los neutros.** Mezclar grises cálido
 y fríos en el mismo producto es lo que hace que algo se vea sucio sin que sepas
 por qué.
 
+**Cómo quedó al adoptar la marca de Un Amargo.** Su paleta es de gris neutro
+puro (`#0a0a0a`, `#555555`, `#e8e8e8`, `#f2f2f2`), o sea justo lo que este
+punto desaconseja. Las dos reglas se cruzan y la resolución es quedarse con
+las dos mitades que no chocan: **el tono neutro de la marca**, porque es la
+marca y no es negociable, y **la prohibición de los extremos puros**, porque
+esa parte es la que de verdad saca profundidad. Por eso el fondo es `#fafafa`
+y no `#ffffff`, y la tinta es `#0a0a0a` y no `#000000`. La marca ya había
+elegido un near-black por la misma razón. Un solo tono sigue valiendo: acá
+todos los neutros son el mismo gris neutro, ninguno es cálido.
+
 ## 2. Un acento, y uno solo
 
 Hoy `--primary` es `oklch(0.205 0 0)`, o sea gris oscuro. Por eso el botón
@@ -58,6 +76,29 @@ La regla que más veces se viola y que es medible: **el texto sobre el acento
 tiene que pasar 4.5:1.** En el sitio de SurLabs el botón naranja lleva texto
 casi negro y no hueso, porque hueso sobre naranja da 3.12:1 y no pasa, y tinta
 sobre naranja da 5.21:1 y sí. Medilo antes de shipear, no lo mires a ojo.
+
+**Acá el acento es el verde de Un Amargo (`#0e6e50`), y eso INVIERTE la regla
+anterior.** El ember de SurLabs era claro y pedía texto tinta; el verde es
+oscuro y pide texto **blanco**:
+
+| sobre `#0e6e50` | contraste | |
+|---|---|---|
+| blanco `#ffffff` | 6.24:1 | pasa |
+| tinta `#0a0a0a` | 3.17:1 | **no pasa** |
+
+No es preferencia, es el número: un botón verde con texto negro no pasa AA. Y
+es el mismo verde con el mismo texto blanco en claro y en oscuro, para tener
+una regla menos que se pueda romper.
+
+**El acento no significa "el número subió".** Significa acción, estado activo y
+foco. Si además pintara las cifras buenas, el mismo verde diría dos cosas y el
+botón verde de al lado se leería como un estado. La dirección de una variación
+ya la dice el signo del texto.
+
+**Y el rojo se reserva para lo accionable.** Una baja de 5% contra el período
+anterior es ruido normal; pintarla de rojo entrena al cliente a ignorar el rojo
+justo para cuando pase algo de verdad (un producto en cero, cobertura de menos
+de una semana).
 
 ## 3. El borde de los inputs de shadcn no llega al mínimo
 
@@ -88,15 +129,30 @@ y ahí el borde puede ser suave, porque el relleno ya delimita el control.
 **Separá los dos usos.** Un filete decorativo entre filas de una tabla y el borde
 de un control no son la misma cosa y no pueden compartir token.
 
-## 4. Un radio, no seis
+## 4. Dos radios, no seis (y no uno)
 
 shadcn trae seis escalones (`--radius-sm` a `--radius-3xl`). Seis radios
 distintos en la misma pantalla es de las cosas que más ensucian sin que se note
 qué está mal.
 
-Elegí uno para todo (botones, inputs, cards, dialogs) y dejá los otros sin usar.
-En el formulario es 6px, definido una sola vez. Para ablandar o afilar el
-producto entero se cambia ese número y nada más.
+La versión original de este punto pedía **uno solo**. Con la marca de Un Amargo
+son **dos**, porque el pill es su firma visual y renunciar a él es renunciar a
+lo que hace que el producto se vea de ellos. Dos está bien **si hay una regla
+que decide cuál**, y ésta es la regla:
+
+| | radio | qué es |
+|---|---|---|
+| Lo que se toca y es autónomo | `--radius-pill` (100px) | botones, chips de estado |
+| Toda superficie | `--radius` (6px) | cards, inputs, tablas, diálogos, checkboxes |
+
+Es la misma regla que sigue su web: campos rectangulares, botón de envío pill.
+Los botones **agrupados** son la excepción de la excepción y van en 6px: pills
+pegadas una contra otra se leen como un error de render.
+
+Tres o más radios sí es desorden. Lo verifica el navegador, no el ojo: recorrer
+la página con `getComputedStyle` y juntar los `borderRadius` distintos tiene que
+dar exactamente dos valores. Así apareció un `rounded-[4px]` escrito a mano en
+el checkbox de shadcn que no se veía en ningún screenshot.
 
 Los círculos son la excepción: un avatar es un círculo, no un rectángulo
 redondeado.
@@ -173,7 +229,8 @@ Vale la pena ser explícito, porque copiar esto mal es peor que no copiarlo.
 | Una sola columna angosta | Sidebar + contenido, y tablas anchas |
 | Aire enorme entre secciones | Densidad: se ven muchas filas de una |
 | Títulos grandes | Jerarquía chica, hay demasiadas pantallas |
-| Fondo oscuro | Claro, porque se mira ocho horas seguidas |
+| Fondo oscuro | Claro, porque se mira ocho horas seguidas (el login es la única pantalla oscura) |
+| Titulares enormes | El mismo peso 700 y tracking -0.035em de la marca, pero en tamaño chico: `.type-display` |
 | Cero tablas | Las tablas son el producto |
 
 Para las tablas, dos reglas que valen más que cualquier otra cosa: **encabezado
@@ -223,10 +280,12 @@ el build ni el lint ni el typecheck: los agarró abrir la página.
 ## Checklist antes de dar una pantalla por terminada
 
 - [ ] Los neutros tienen todos el mismo tono, y ninguno es blanco o negro puro
-- [ ] Un solo acento en toda la pantalla
+- [ ] Un solo acento en toda la pantalla, y NO se usa para "el número subió"
 - [ ] El texto sobre el acento pasa 4.5:1, medido
+- [ ] El rojo aparece solo en lo accionable, no en variaciones normales
 - [ ] El borde de los controles pasa 3:1, o el control tiene relleno propio
-- [ ] Un solo radio
+- [ ] Dos radios: pill en botones y chips, 6px en superficies. Contados en el
+      navegador con `getComputedStyle`, no a ojo
 - [ ] Etiquetas arriba de los inputs, nunca placeholder como etiqueta
 - [ ] Existen los estados vacío, cargando y error, no solo el feliz
 - [ ] Ningún error se traga en silencio

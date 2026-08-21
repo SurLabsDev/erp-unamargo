@@ -5,8 +5,14 @@
  * ligadura-, el mismo archivo que usa su web publica.
  *
  * `Surlabs` es una aguja de brujula que apunta al SUR, no al norte: dice de
- * donde somos sin escribirlo. La mitad sur va en el color primario, que en
- * este ERP es el mismo ember de la marca.
+ * donde somos sin escribirlo.
+ *
+ * El lockup va MONOCROMO. La mitad sur solia ir en `--color-primary`, que
+ * cuando el acento era el ember de Surlabs era su propio color. Ahora el acento
+ * es el verde del cliente, y pintar la brujula de Surlabs de verde seria darle
+ * a Surlabs un color que no es suyo, ademas de poner el acento en un lugar
+ * donde no hay ninguna accion. Monocromo tambien es lo que corresponde a un
+ * credito de proveedor: el sur se sigue leyendo por el contraste de opacidad.
  *
  * Los dos heredan el color con `currentColor`, asi sirven sobre claro y sobre
  * oscuro sin tener dos versiones.
@@ -51,9 +57,9 @@ export function Surlabs({ className }: { className?: string }) {
         strokeWidth="1.25"
         strokeLinecap="square"
       />
-      {/* Mitad norte apagada, mitad sur en el acento: ese es el punto. */}
+      {/* Norte apagado, sur pleno: el punto se sostiene con la opacidad. */}
       <path d="M12 3.6 15.1 12H8.9L12 3.6Z" fill="currentColor" fillOpacity="0.25" />
-      <path d="M12 20.4 8.9 12h6.2L12 20.4Z" fill="var(--color-primary)" />
+      <path d="M12 20.4 8.9 12h6.2L12 20.4Z" fill="currentColor" />
     </svg>
   );
 }

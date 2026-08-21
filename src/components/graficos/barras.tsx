@@ -27,9 +27,12 @@ export function GraficoBarras({
               {formato(f.valor)}
             </span>
           </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+          {/* Pill y no un radio suelto: en una barra de 6px el navegador lo
+              recorta a un extremo capsular, o sea la misma forma de la marca,
+              y sale del token en vez de un valor escrito a mano. */}
+          <div className="h-1.5 overflow-hidden rounded-pill bg-muted">
             <div
-              className={`h-full rounded-full ${color}`}
+              className={`h-full rounded-pill ${color}`}
               style={{ width: `${Math.max((f.valor / max) * 100, 2)}%` }}
             />
           </div>

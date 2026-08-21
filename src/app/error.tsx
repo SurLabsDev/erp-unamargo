@@ -19,7 +19,7 @@ export default function ErrorPage(props: {
       <p className="text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
         Error
       </p>
-      <h1 className="text-xl font-semibold tracking-tight">
+      <h1 className="type-display text-xl">
         Ocurrió un error, intentá de nuevo.
       </h1>
       <p className="max-w-sm text-sm text-muted-foreground">
