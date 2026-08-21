@@ -5,6 +5,7 @@ import { deliverAlerts } from "@/lib/alerts";
 import { ForbiddenError, requireRole } from "@/lib/auth-helpers";
 import { parseProductsCsv } from "@/lib/domain/import";
 import { executeImport, previewImport } from "@/lib/import-runner";
+import { avisarALaWeb } from "@/lib/avisar-web";
 
 const MAX_FILE_BYTES = 512 * 1024;
 
@@ -130,6 +131,7 @@ export async function confirmImportAction(
 
     revalidatePath("/stock");
     revalidatePath("/");
+    await avisarALaWeb();
 
     const rejected = [...parsed.rejected, ...outcome.rejected].sort(
       (a, b) => a.line - b.line,

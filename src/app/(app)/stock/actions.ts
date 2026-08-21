@@ -25,6 +25,7 @@ import {
   stockMovements,
 } from "@/lib/db/schema";
 import { slugify, uniqueSlug } from "@/lib/domain/slug";
+import { avisarALaWeb } from "@/lib/avisar-web";
 import {
   MAX_ACTIVE_PRODUCTS,
   computeAdjustmentDelta,
@@ -49,11 +50,15 @@ function handleError(error: unknown): ActionResult {
   return { ok: false, error: "Ocurrió un error, intentá de nuevo." };
 }
 
-function revalidateStock(productId?: string) {
+/** Revalida las pantallas del ERP y, ademas, le avisa a la web publica.
+ *  El aviso va aca adentro a proposito: cualquier accion nueva que revalide
+ *  el catalogo lo hereda sin que nadie se acuerde de agregarlo. */
+async function revalidateStock(productId?: string) {
   revalidatePath("/stock");
   revalidatePath("/stock/movimientos");
   if (productId) revalidatePath(`/stock/${productId}`);
   revalidatePath("/");
+  await avisarALaWeb();
 }
 
 /** Slug unico para la URL del producto en la web. Se calcula DENTRO de la
@@ -191,7 +196,7 @@ export async function createProductAction(
 
     if (result.ok) {
       await deliverAlerts(pendingAlert ? [pendingAlert] : []);
-      revalidateStock();
+      await revalidateStock();
     }
     return result;
   } catch (error) {
@@ -262,7 +267,7 @@ export async function updateProductAction(
 
     if (result.ok) {
       await deliverAlerts(pendingAlert ? [pendingAlert] : []);
-      revalidateStock(productId);
+      await revalidateStock(productId);
     }
     return result;
   } catch (error) {
@@ -313,7 +318,7 @@ export async function setProductActiveAction(
 
     if (result.ok) {
       await deliverAlerts(pendingAlert ? [pendingAlert] : []);
-      revalidateStock(productId);
+      await revalidateStock(productId);
     }
     return result;
   } catch (error) {
@@ -444,7 +449,7 @@ export async function registerMovementAction(
 
     if (result.ok) {
       await deliverAlerts(pendingAlert ? [pendingAlert] : []);
-      revalidateStock(input.productId);
+      await revalidateStock(input.productId);
     }
     return result;
   } catch (error) {
@@ -649,7 +654,7 @@ export async function updateProductContentAction(
       return { ok: true, message: "Ficha actualizada." };
     });
 
-    if (result.ok) revalidateStock(productId);
+    if (result.ok) await revalidateStock(productId);
     return result;
   } catch (error) {
     return handleError(error);

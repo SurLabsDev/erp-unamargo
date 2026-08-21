@@ -15,6 +15,7 @@ import {
 } from "@/lib/db/schema";
 import { isValidISODate } from "@/lib/domain/dates";
 import { MAX_PERCENTAGE, MIN_PERCENTAGE } from "@/lib/domain/discounts";
+import { avisarALaWeb } from "@/lib/avisar-web";
 
 export type ActionResult =
   | { ok: true; message: string }
@@ -31,10 +32,14 @@ function handleError(error: unknown): ActionResult {
   return { ok: false, error: "Ocurrió un error, intentá de nuevo." };
 }
 
-function revalidateDiscounts() {
+/** Revalida las pantallas del ERP y, ademas, le avisa a la web publica.
+ *  El aviso va aca adentro a proposito: cualquier accion nueva que revalide
+ *  el catalogo lo hereda sin que nadie se acuerde de agregarlo. */
+async function revalidateDiscounts() {
   revalidatePath("/descuentos");
   revalidatePath("/stock");
   revalidatePath("/");
+  await avisarALaWeb();
 }
 
 // --- Campaigns ---------------------------------------------------------------
@@ -92,7 +97,7 @@ export async function createCampaignAction(
       createdBy: admin.id,
     });
 
-    revalidateDiscounts();
+    await revalidateDiscounts();
     return { ok: true, message: `Campaña "${name}" creada.` };
   } catch (error) {
     return handleError(error);
@@ -116,7 +121,7 @@ export async function updateCampaignAction(
       .returning({ id: discountCampaigns.id });
     if (!updated) return { ok: false, error: "La campaña no existe." };
 
-    revalidateDiscounts();
+    await revalidateDiscounts();
     return { ok: true, message: "Campaña actualizada." };
   } catch (error) {
     return handleError(error);
@@ -138,7 +143,7 @@ export async function setCampaignActiveAction(
       .returning({ name: discountCampaigns.name });
     if (!updated) return { ok: false, error: "La campaña no existe." };
 
-    revalidateDiscounts();
+    await revalidateDiscounts();
     return {
       ok: true,
       message: active
@@ -259,7 +264,7 @@ export async function addTargetAction(
       categoryId: level === "category" ? targetId : null,
     });
 
-    revalidateDiscounts();
+    await revalidateDiscounts();
     return { ok: true, message: "Objetivo agregado a la campaña." };
   } catch (error) {
     return handleError(error);
@@ -277,7 +282,7 @@ export async function removeTargetAction(
       .returning({ id: discountTargets.id });
     if (!deleted) return { ok: false, error: "El objetivo no existe." };
 
-    revalidateDiscounts();
+    await revalidateDiscounts();
     return { ok: true, message: "Objetivo quitado de la campaña." };
   } catch (error) {
     return handleError(error);

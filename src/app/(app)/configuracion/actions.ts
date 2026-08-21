@@ -27,6 +27,7 @@ import { categoryNameSchema, passwordSchema } from "@/lib/domain/money";
 import { slugify, uniqueSlug } from "@/lib/domain/slug";
 import { todayInTimeZone } from "@/lib/format";
 import { getSettings } from "@/lib/settings";
+import { avisarALaWeb } from "@/lib/avisar-web";
 
 export type ActionResult =
   | { ok: true; message: string; password?: string }
@@ -49,10 +50,14 @@ function revalidateConfig() {
   revalidatePath("/");
 }
 
-function revalidateCatalog() {
+/** Revalida las pantallas del ERP y, ademas, le avisa a la web publica.
+ *  El aviso va aca adentro a proposito: cualquier accion nueva que revalide
+ *  el catalogo lo hereda sin que nadie se acuerde de agregarlo. */
+async function revalidateCatalog() {
   revalidatePath("/configuracion");
   revalidatePath("/stock");
   revalidatePath("/");
+  await avisarALaWeb();
 }
 
 function generatePassword(): string {
@@ -564,7 +569,7 @@ export async function createProductCategoryAction(
       slug: uniqueSlug(slugify(name), new Set(usados.map((u) => u.slug))),
       sortOrder: siguiente,
     });
-    revalidateCatalog();
+    await revalidateCatalog();
     return { ok: true, message: `Categoría "${name}" creada.` };
   } catch (error) {
     return handleError(error);
@@ -602,7 +607,7 @@ export async function renameProductCategoryAction(
       .returning({ id: productCategories.id });
     if (!updated) return { ok: false, error: "La categoría no existe." };
 
-    revalidateCatalog();
+    await revalidateCatalog();
     return {
       ok: true,
       message: "Categoría renombrada. La dirección web no cambia.",
@@ -625,7 +630,7 @@ export async function setProductCategoryActiveAction(
       .returning({ name: productCategories.name });
     if (!updated) return { ok: false, error: "La categoría no existe." };
 
-    revalidateCatalog();
+    await revalidateCatalog();
     return {
       ok: true,
       message: active
@@ -696,7 +701,7 @@ export async function createProductSubtypeAction(
       slug: uniqueSlug(slugify(name), new Set(usados.map((u) => u.slug))),
       sortOrder: siguiente,
     });
-    revalidateCatalog();
+    await revalidateCatalog();
     return { ok: true, message: `Subtipo "${name}" creado.` };
   } catch (error) {
     return handleError(error);
@@ -741,7 +746,7 @@ export async function renameProductSubtypeAction(
       .update(productSubtypes)
       .set({ name: parsed.data })
       .where(eq(productSubtypes.id, subtypeId));
-    revalidateCatalog();
+    await revalidateCatalog();
     return {
       ok: true,
       message: "Subtipo renombrado. La dirección web no cambia.",
@@ -764,7 +769,7 @@ export async function setProductSubtypeActiveAction(
       .returning({ name: productSubtypes.name });
     if (!updated) return { ok: false, error: "El subtipo no existe." };
 
-    revalidateCatalog();
+    await revalidateCatalog();
     return {
       ok: true,
       message: active
