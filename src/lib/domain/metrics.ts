@@ -134,3 +134,22 @@ export function escalaY(maximo: number, marcas = 4): { tope: number; valores: nu
 
   return { tope, valores: Array.from({ length: marcas + 1 }, (_, i) => i * paso) };
 }
+
+/**
+ * Monto abreviado para etiquetas de grafico: 83110 -> "83 mil", 2917467 ->
+ * "2,9 M".
+ *
+ * Va abreviado porque en una barra de 90px no entra "$ 2.917.467,00", y una
+ * etiqueta que se corta es peor que ninguna. El monto exacto sigue estando en
+ * el modulo Dinero; esto es para leer la forma del grafico de un vistazo.
+ */
+export function abreviarMonto(pesos: number): string {
+  const abs = Math.abs(pesos);
+  const signo = pesos < 0 ? "-" : "";
+  if (abs >= 1_000_000) {
+    const m = abs / 1_000_000;
+    return `${signo}${m.toFixed(m < 10 ? 1 : 0).replace(".", ",")} M`;
+  }
+  if (abs >= 1_000) return `${signo}${Math.round(abs / 1_000)} mil`;
+  return `${signo}${Math.round(abs)}`;
+}

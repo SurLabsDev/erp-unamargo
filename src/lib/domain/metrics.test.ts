@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  abreviarMonto,
   diasDeCobertura,
   escalaY,
   reparto,
@@ -130,5 +131,22 @@ describe("escalaY", () => {
     const { tope, valores } = escalaY(0, 4);
     expect(tope).toBe(4);
     expect(valores).toEqual([0, 1, 2, 3, 4]);
+  });
+});
+
+describe("abreviarMonto", () => {
+  it("abrevia en miles y millones", () => {
+    expect(abreviarMonto(83110)).toBe("83 mil");
+    expect(abreviarMonto(2917467)).toBe("2,9 M");
+    expect(abreviarMonto(12500000)).toBe("13 M");
+  });
+
+  it("deja los montos chicos como estan", () => {
+    expect(abreviarMonto(0)).toBe("0");
+    expect(abreviarMonto(950)).toBe("950");
+  });
+
+  it("conserva el signo", () => {
+    expect(abreviarMonto(-4200)).toBe("-4 mil");
   });
 });
