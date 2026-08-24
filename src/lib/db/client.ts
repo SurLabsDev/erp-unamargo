@@ -17,12 +17,34 @@ if (!process.env.DATABASE_URL && process.env.NODE_ENV === "production") {
 }
 
 // `prepare: false` is required for transaction-mode poolers (pgbouncer).
+//
+// El resto de los numeros son la diferencia entre un ERP que anda y uno que se
+// cuelga solo. La base admite 60 conexiones. Con `max: 5` y SIN `idle_timeout`,
+// cada instancia serverless abria cinco y no las soltaba nunca: a las doce
+// instancias tibias la base se quedaba sin cupo y CUALQUIER pantalla se
+// colgaba esperando una conexion que no llegaba. No fallaba: esperaba. Por eso
+// se veia intermitente y sin errores en los logs.
+//
+//  - `idle_timeout` es el arreglo de fondo: suelta la conexion que no se usa,
+//    asi una instancia dormida deja de ocupar cupo.
+//  - `max: 3` porque una invocacion atiende un pedido. La pantalla que mas pide
+//    son diez consultas en paralelo y con tres corren en cuatro tandas, que a
+//    ~100ms cada una no se nota, pero baja casi a la mitad el cupo por instancia.
+//  - `max_lifetime` recicla conexiones viejas que el pooler pudo haber perdido.
+//  - `connect_timeout` es para que falle FUERTE en vez de esperar para siempre:
+//    un error que se ve se arregla, una espera infinita parece un cuelgue.
 // Singleton via globalThis so dev HMR does not leak connections.
 const globalForDb = globalThis as unknown as {
   pgClient?: ReturnType<typeof postgres>;
 };
 
-const client = globalForDb.pgClient ?? postgres(url, { prepare: false, max: 5 });
+const client = globalForDb.pgClient ?? postgres(url, {
+    prepare: false,
+    max: 3,
+    idle_timeout: 20,
+    max_lifetime: 60 * 30,
+    connect_timeout: 10,
+  });
 if (process.env.NODE_ENV !== "production") globalForDb.pgClient = client;
 
 export const db = drizzle(client, { schema });
