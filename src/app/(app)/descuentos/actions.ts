@@ -1,7 +1,7 @@
 "use server";
 
 import { and, eq } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import "@/lib/zod-locale";
 import { ForbiddenError, requireRole } from "@/lib/auth-helpers";
@@ -16,6 +16,7 @@ import {
 import { isValidISODate } from "@/lib/domain/dates";
 import { MAX_PERCENTAGE, MIN_PERCENTAGE } from "@/lib/domain/discounts";
 import { avisarALaWeb } from "@/lib/avisar-web";
+import { ETIQUETA_PANEL } from "../panel-cache";
 
 export type ActionResult =
   | { ok: true; message: string }
@@ -40,6 +41,12 @@ async function revalidateDiscounts() {
   revalidatePath("/stock");
   revalidatePath("/");
   await avisarALaWeb();
+  // El panel lee cacheado: sin esto seguiria mostrando las cifras de antes
+  // de este guardado. Va `updateTag` y no `revalidateTag` porque en Next 16
+  // es el que expira YA dentro de una server action; el otro programa la
+  // expiracion y el usuario veria su propio cambio recien en la visita
+  // siguiente, que es justo la queja que originó todo esto.
+  updateTag(ETIQUETA_PANEL);
 }
 
 // --- Campaigns ---------------------------------------------------------------

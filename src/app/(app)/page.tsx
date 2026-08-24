@@ -33,16 +33,17 @@ import {
 } from "@/lib/format";
 import { singleParam } from "@/lib/params";
 import { getSettings } from "@/lib/settings";
-import { countActiveCampaigns } from "./descuentos/queries";
-import { periodTotals } from "./dinero/queries";
-import { listLowStockProducts, listRecentMovements } from "./stock/queries";
 import {
-  cajaPorMes,
-  egresosPorCategoria,
-  productosConSalidas,
-  salidasDelPeriodo,
-  valorDelInventario,
-} from "./queries";
+  panelBajoStock,
+  panelCajaPorMes,
+  panelCampanas,
+  panelEgresos,
+  panelInventario,
+  panelMovimientos,
+  panelProductosConSalidas,
+  panelSalidas,
+  panelTotales,
+} from "./panel-cache";
 
 export const metadata: Metadata = { title: "Panel" };
 
@@ -140,16 +141,16 @@ export default async function PanelPage(props: PageProps<"/">) {
     meses,
     egresos,
   ] = await Promise.all([
-    listLowStockProducts(),
-    listRecentMovements(5),
-    periodTotals(period),
-    countActiveCampaigns(hoy),
-    salidasDelPeriodo(desde, hasta),
-    salidasDelPeriodo(desdePrevio, hastaPrevio),
-    productosConSalidas(desde, hasta),
-    valorDelInventario(),
-    cajaPorMes(6),
-    egresosPorCategoria(desde, hasta),
+    panelBajoStock(),
+    panelMovimientos(5),
+    panelTotales(period),
+    panelCampanas(hoy),
+    panelSalidas(desde, hasta),
+    panelSalidas(desdePrevio, hastaPrevio),
+    panelProductosConSalidas(desde, hasta),
+    panelInventario(),
+    panelCajaPorMes(6),
+    panelEgresos(desde, hasta),
   ]);
 
   const summary = computePeriodSummary(settings.initialBalance, totals);

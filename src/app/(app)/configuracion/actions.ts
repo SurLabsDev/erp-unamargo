@@ -3,7 +3,7 @@
 import { randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { and, count, eq, isNull, lt, ne, sql } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import "@/lib/zod-locale";
 import { ForbiddenError, requireRole } from "@/lib/auth-helpers";
@@ -28,6 +28,7 @@ import { slugify, uniqueSlug } from "@/lib/domain/slug";
 import { todayInTimeZone } from "@/lib/format";
 import { getSettings } from "@/lib/settings";
 import { avisarALaWeb } from "@/lib/avisar-web";
+import { ETIQUETA_PANEL } from "../panel-cache";
 
 export type ActionResult =
   | { ok: true; message: string; password?: string }
@@ -58,6 +59,12 @@ async function revalidateCatalog() {
   revalidatePath("/stock");
   revalidatePath("/");
   await avisarALaWeb();
+  // El panel lee cacheado: sin esto seguiria mostrando las cifras de antes
+  // de este guardado. Va `updateTag` y no `revalidateTag` porque en Next 16
+  // es el que expira YA dentro de una server action; el otro programa la
+  // expiracion y el usuario veria su propio cambio recien en la visita
+  // siguiente, que es justo la queja que originó todo esto.
+  updateTag(ETIQUETA_PANEL);
 }
 
 function generatePassword(): string {

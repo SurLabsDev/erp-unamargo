@@ -1,7 +1,7 @@
 "use server";
 
 import { and, count, eq, sql } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import {
   deliverAlerts,
@@ -26,6 +26,7 @@ import {
 } from "@/lib/db/schema";
 import { slugify, uniqueSlug } from "@/lib/domain/slug";
 import { avisarALaWeb } from "@/lib/avisar-web";
+import { ETIQUETA_PANEL } from "../panel-cache";
 import {
   MAX_ACTIVE_PRODUCTS,
   computeAdjustmentDelta,
@@ -59,6 +60,12 @@ async function revalidateStock(productId?: string) {
   if (productId) revalidatePath(`/stock/${productId}`);
   revalidatePath("/");
   await avisarALaWeb();
+  // El panel lee cacheado: sin esto seguiria mostrando las cifras de antes
+  // de este guardado. Va `updateTag` y no `revalidateTag` porque en Next 16
+  // es el que expira YA dentro de una server action; el otro programa la
+  // expiracion y el usuario veria su propio cambio recien en la visita
+  // siguiente, que es justo la queja que originó todo esto.
+  updateTag(ETIQUETA_PANEL);
 }
 
 /** Slug unico para la URL del producto en la web. Se calcula DENTRO de la

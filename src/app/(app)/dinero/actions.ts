@@ -1,7 +1,7 @@
 "use server";
 
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import { ForbiddenError, requireRole } from "@/lib/auth-helpers";
 import { db } from "@/lib/db/client";
@@ -13,6 +13,7 @@ import {
   voidReasonSchema,
 } from "@/lib/domain/money";
 import { todayInTimeZone } from "@/lib/format";
+import { ETIQUETA_PANEL } from "../panel-cache";
 
 export type ActionResult =
   { ok: true; message: string } | { ok: false; error: string };
@@ -31,6 +32,12 @@ function handleError(error: unknown): ActionResult {
 function revalidateCash() {
   revalidatePath("/dinero");
   revalidatePath("/");
+  // El panel lee cacheado: sin esto seguiria mostrando las cifras de antes
+  // de este guardado. Va `updateTag` y no `revalidateTag` porque en Next 16
+  // es el que expira YA dentro de una server action; el otro programa la
+  // expiracion y el usuario veria su propio cambio recien en la visita
+  // siguiente, que es justo la queja que originó todo esto.
+  updateTag(ETIQUETA_PANEL);
 }
 
 export async function createCashMovementAction(
