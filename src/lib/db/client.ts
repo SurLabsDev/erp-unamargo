@@ -18,33 +18,25 @@ if (!process.env.DATABASE_URL && process.env.NODE_ENV === "production") {
 
 // `prepare: false` is required for transaction-mode poolers (pgbouncer).
 //
-// El resto de los numeros son la diferencia entre un ERP que anda y uno que se
-// cuelga solo. La base admite 60 conexiones. Con `max: 5` y SIN `idle_timeout`,
-// cada instancia serverless abria cinco y no las soltaba nunca: a las doce
-// instancias tibias la base se quedaba sin cupo y CUALQUIER pantalla se
-// colgaba esperando una conexion que no llegaba. No fallaba: esperaba. Por eso
-// se veia intermitente y sin errores en los logs.
+// HIPOTESIS PROBADA Y DESCARTADA (2026-08-24): se probo `max: 3` con
+// `idle_timeout: 20`, `max_lifetime` y `connect_timeout: 10` creyendo que el
+// ERP se quedaba sin conexiones. NO era eso -la base tenia 8 de 60 conexiones
+// en uso y cero locks trabados- y ademas la version con esos parametros dejo el
+// ambiente de prueba PEOR: la API paso de 0.44s a errores 500 y cuelgues. La
+// sospecha es que cerrar conexiones por tiempo contra un pooler en modo
+// transaccion deja sesiones trabadas del lado del servidor. No volver a
+// intentarlo sin medir antes y despues.
 //
-//  - `idle_timeout` es el arreglo de fondo: suelta la conexion que no se usa,
-//    asi una instancia dormida deja de ocupar cupo.
-//  - `max: 3` porque una invocacion atiende un pedido. La pantalla que mas pide
-//    son diez consultas en paralelo y con tres corren en cuatro tandas, que a
-//    ~100ms cada una no se nota, pero baja casi a la mitad el cupo por instancia.
-//  - `max_lifetime` recicla conexiones viejas que el pooler pudo haber perdido.
-//  - `connect_timeout` es para que falle FUERTE en vez de esperar para siempre:
-//    un error que se ve se arregla, una espera infinita parece un cuelgue.
+// El sintoma real a investigar es otro: aparecen sesiones en estado `active` +
+// `ClientRead` que duran minutos, o sea Postgres esperando datos de un cliente
+// serverless que ya murio. Se ven con:
+//   select pid, state, wait_event, now()-xact_start, query from pg_stat_activity;
 // Singleton via globalThis so dev HMR does not leak connections.
 const globalForDb = globalThis as unknown as {
   pgClient?: ReturnType<typeof postgres>;
 };
 
-const client = globalForDb.pgClient ?? postgres(url, {
-    prepare: false,
-    max: 3,
-    idle_timeout: 20,
-    max_lifetime: 60 * 30,
-    connect_timeout: 10,
-  });
+const client = globalForDb.pgClient ?? postgres(url, { prepare: false, max: 5 });
 if (process.env.NODE_ENV !== "production") globalForDb.pgClient = client;
 
 export const db = drizzle(client, { schema });
