@@ -8,7 +8,10 @@ import { Badge } from "@/components/ui/badge";
 import { requireAdminPage } from "@/lib/auth-helpers";
 import { STATE_LABELS } from "@/lib/domain/discounts";
 import { formatDate } from "@/lib/format";
-import { getCampaign } from "../queries";
+import { todayInTimeZone } from "@/lib/format";
+import { getSettings } from "@/lib/settings";
+import { efectoDeCampana, getCampaign } from "../queries";
+import { EfectoDeLaCampana } from "./efecto";
 import { CampaignEditForm } from "./campaign-edit-form";
 import { TargetsManager } from "./targets-manager";
 
@@ -24,6 +27,9 @@ export default async function CampaignDetailPage(
   const campaign = await getCampaign(id);
   if (!campaign) notFound();
 
+  const settings = await getSettings();
+  const hoy = todayInTimeZone(settings.timezone);
+  const efecto = await efectoDeCampana(campaign.id, hoy, settings.timezone);
   const [opciones, catalogo] = await Promise.all([
     listClassificationOptions(),
     listCatalog(),
@@ -62,6 +68,8 @@ export default async function CampaignDetailPage(
         startsOn={campaign.startsOn}
         endsOn={campaign.endsOn}
       />
+
+      <EfectoDeLaCampana efecto={efecto} />
 
       <TargetsManager
         campaignId={campaign.id}

@@ -3,7 +3,7 @@
 // module lives under the authenticated `(app)` route group's folder. Keep
 // every import in this file free of anything that depends on an authenticated
 // session, or that public endpoint breaks at runtime.
-import { asc, desc, eq, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lt, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
   discountCampaigns,
@@ -11,7 +11,9 @@ import {
   productCategories,
   productSubtypes,
   products,
+  stockMovements,
 } from "@/lib/db/schema";
+import { addDaysISO, diffDaysISO, zonedMidnightUtc } from "@/lib/domain/dates";
 import {
   campaignState,
   type CampaignState,
@@ -225,4 +227,121 @@ export async function countActiveCampaigns(todayISO: string): Promise<number> {
   const rows = await db.select(campaignFields).from(discountCampaigns);
   return rows.filter((row) => campaignState(row, todayISO) === "active")
     .length;
+}
+
+export type EfectoCampana = {
+  productosAlcanzados: number;
+  unidadesDurante: number;
+  unidadesAntes: number;
+  diasDurante: number;
+  diasAntes: number;
+  enCurso: boolean;
+};
+
+/**
+ * Qué se movió mientras la campaña estuvo viva.
+ *
+ * **Lee esto antes de mirar el número.** El ERP no guarda a qué precio salió
+ * cada unidad ni bajo qué campaña, así que la pregunta "cuántos vendí CON este
+ * descuento" no se puede contestar con lo que hay anotado: contestarla pediría
+ * anotar el precio y la campaña en cada salida de stock, que es un cambio de
+ * esquema y de flujo de trabajo.
+ *
+ * Lo que sí se puede contestar, y es lo que devuelve esto: cuántas unidades
+ * salieron de los productos alcanzados durante la campaña, contra las que
+ * salieron en la misma cantidad de días justo antes. Sirve para ver si el
+ * movimiento cambió; no prueba que lo haya causado la campaña, y una salida no
+ * es necesariamente una venta -puede ser una rotura o un ajuste-.
+ *
+ * El período "antes" se toma de igual largo que el transcurrido, no que el
+ * total: una campaña de 30 días mirada en el día 3 compararía 3 contra 30 y
+ * mostraría un derrumbe inventado.
+ */
+export async function efectoDeCampana(
+  campaignId: string,
+  hoyISO: string,
+  timezone: string,
+): Promise<EfectoCampana> {
+  const [campana] = await db
+    .select({
+      startsOn: discountCampaigns.startsOn,
+      endsOn: discountCampaigns.endsOn,
+    })
+    .from(discountCampaigns)
+    .where(eq(discountCampaigns.id, campaignId))
+    .limit(1);
+  if (!campana) {
+    return {
+      productosAlcanzados: 0,
+      unidadesDurante: 0,
+      unidadesAntes: 0,
+      diasDurante: 0,
+      diasAntes: 0,
+      enCurso: false,
+    };
+  }
+
+  // Los objetivos se resuelven a productos concretos: una campaña puede
+  // apuntar a un producto, a un subtipo o a una categoria entera.
+  const alcanzados = await db
+    .selectDistinct({ id: products.id })
+    .from(products)
+    .innerJoin(
+      discountTargets,
+      or(
+        eq(discountTargets.productId, products.id),
+        eq(discountTargets.subtypeId, products.subtypeId),
+        eq(discountTargets.categoryId, products.categoryId),
+      ),
+    )
+    .where(eq(discountTargets.campaignId, campaignId));
+
+  const ids = alcanzados.map((p) => p.id);
+  const desde = campana.startsOn;
+  const hasta = campana.endsOn > hoyISO ? hoyISO : campana.endsOn;
+  const diasDurante = desde > hasta ? 0 : diffDaysISO(desde, hasta) + 1;
+  const hastaAntes = addDaysISO(desde, -1);
+  const desdeAntes = addDaysISO(hastaAntes, -(diasDurante - 1));
+
+  if (ids.length === 0 || diasDurante === 0) {
+    return {
+      productosAlcanzados: ids.length,
+      unidadesDurante: 0,
+      unidadesAntes: 0,
+      diasDurante,
+      diasAntes: diasDurante,
+      enCurso: campana.endsOn >= hoyISO,
+    };
+  }
+
+  const salidas = async (d: string, h: string): Promise<number> => {
+    const inicio = zonedMidnightUtc(d, timezone);
+    const fin = zonedMidnightUtc(addDaysISO(h, 1), timezone);
+    const [fila] = await db
+      .select({ total: sql<number>`coalesce(sum(-${stockMovements.delta}), 0)::int` })
+      .from(stockMovements)
+      .where(
+        and(
+          inArray(stockMovements.productId, ids),
+          eq(stockMovements.type, "out"),
+          gte(stockMovements.createdAt, inicio),
+          lt(stockMovements.createdAt, fin),
+        ),
+      );
+    return fila?.total ?? 0;
+  };
+
+  const [unidadesDurante, unidadesAntes] = await Promise.all([
+    salidas(desde, hasta),
+    salidas(desdeAntes, hastaAntes),
+  ]);
+
+  return {
+    productosAlcanzados: ids.length,
+    unidadesDurante,
+    unidadesAntes,
+    diasDurante,
+    diasAntes: diasDurante,
+    enCurso: campana.endsOn >= hoyISO,
+  };
 }
