@@ -14,6 +14,7 @@ import { publicImageUrl, storageConfigured } from "@/lib/storage";
 import { DetailActions } from "./detail-actions";
 import { ProductContent } from "./product-content";
 import { ProductImages } from "./product-images";
+import { VistaPrevia } from "./vista-previa";
 import { MovementsTable } from "../movements-table";
 import {
   getCatalogProduct,
@@ -127,6 +128,34 @@ export default async function ProductDetailPage(
         }))}
         puedeEditar={user.role === "admin"}
         storageConfigurado={storageConfigured()}
+      />
+
+      {/* Va DESPUES de los campos y las fotos, no antes: se mira para
+          confirmar lo que se acaba de editar, no para decidir que editar. */}
+      <VistaPrevia
+        nombre={product.name}
+        precio={product.price}
+        precioFinal={product.discount?.priceFinal ?? null}
+        descuento={
+          product.discount
+            ? {
+                percentage: product.discount.percentage,
+                campaignName: product.discount.campaignName,
+              }
+            : null
+        }
+        descripcion={product.description}
+        categoria={
+          opciones.find((c) => c.id === product.categoryId)?.name ?? null
+        }
+        subtipo={
+          opciones
+            .flatMap((c) => c.subtypes ?? [])
+            .find((sub) => sub.id === product.subtypeId)?.name ?? null
+        }
+        foto={imagenes[0] ? publicImageUrl(imagenes[0].path) : null}
+        hayStock={product.currentStock > 0}
+        moneda={settings.currencyCode}
       />
 
       <div className="grid gap-3">
