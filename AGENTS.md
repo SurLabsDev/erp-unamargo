@@ -63,6 +63,41 @@ Next.js 16 (App Router, TS estricto, `src/`) · Postgres (Supabase/Neon free tie
 
 - H7 ✔ panel con metricas (21/08/2026) — el Panel pasa de resumen a tablero: unidades que salieron contra el periodo anterior, saldo, inventario a precio de lista, quiebres, salidas por dia, lo que mas sale, **dias de cobertura** (stock / ritmo, que ordena la reposicion mejor que el minimo fijo), stock parado, reparto por rubro, caja mes a mes y egresos por categoria. Las cuentas viven en `src/lib/domain/metrics.ts` como funciones puras con tests; las consultas en `src/app/(app)/queries.ts`. **Los graficos son SVG y divs escritos a mano** (regla 6: nada de librerias de charts) y son Server Components, asi que no mandan JS. **No hay ticket promedio ni margen y no puede haberlos**: la caja no referencia productos y el precio es de exhibicion; la pantalla lo dice en vez de esconderlo. Dos trampas que costaron un rato y quedan anotadas: un `Date` interpolado dentro de un fragmento `sql` crudo el driver no lo sabe codificar (va el ISO con cast), y una altura en porcentaje no resuelve si el padre la tiene en `auto`.
 
+## Ambiente de prueba
+
+| | rama | base |
+|---|---|---|
+| `erp-unamargo.vercel.app` | `main` | Supabase `un-amargo`, la del CLIENTE |
+| `testerp.unamargo.com` | `develop` | Supabase `unamargo-test`, descartable |
+
+Todo lo que se despliegue en `develop` va al ambiente de prueba y **no puede
+tocar la base del cliente**. Verificado poniendo un precio distinto solo en
+testing y comprobando que produccion no se movio.
+
+Tres cosas que sostienen esa separacion y que hay que respetar:
+
+- **Las credenciales de produccion estan SOLO en el entorno `production`.**
+  Venian marcadas `production,preview`, o sea que cualquier rama se conectaba a
+  la base viva del cliente. Si algun dia un preview funciona sin que nadie le
+  haya puesto una `DATABASE_URL` propia, es que alguien volvio a filtrarlas.
+- **Las variables de preview estan atadas a la rama `develop`** (`gitBranch`),
+  asi que una rama cualquiera no levanta un ERP con datos.
+- **Los secretos del test son distintos de los de produccion.** Si el ambiente
+  de prueba se filtra, no puede firmar sesiones ni disparar revalidaciones en el
+  real.
+
+**Para sembrar o migrar la base de prueba NO uses `npm run db:seed` ni
+`npm run db:migrate`.** Esos scripts llevan `--env-file-if-exists=.env`, y ese
+`.env` apunta a la base de PRODUCCION del cliente. Se corre `tsx` o
+`drizzle-kit` directo, pasando la `DATABASE_URL` de testing explicita.
+
+Y una del proveedor: los proyectos nuevos de Supabase **ya no exponen conexion
+directa por IPv4**, asi que `db.<ref>.supabase.co:5432` no resuelve. Para DDL se
+usa el pooler en **modo sesion** (`aws-0-<region>.pooler.supabase.com:5432`); el
+puerto 6543 es modo transaccion y es el que usa la app.
+
+Las credenciales viven en `~/.config/surlabs/unamargo-cloudflare.env` (600).
+
 **Aviso a la web**: cualquier accion que cambie lo que devuelve `/api/public/v1/stock` tiene que pasar por uno de los helpers de revalidacion (`revalidateStock`, `revalidateDiscounts`, `revalidateCatalog`), que ya avisan a la web publica. Si se agrega un helper nuevo, tiene que llamar a `avisarALaWeb()`. Sin `WEB_REVALIDATE_URL` y `WEB_REVALIDATE_SECRET` no hace nada, que es lo correcto en local.
 
 **Pendiente**: crear el admin real del cliente (hoy la instancia tiene 0 usuarios visibles), correr el import del catálogo contra la instancia del cliente, Resend, y la web del cliente que consuma la API.
