@@ -53,10 +53,9 @@ const columnHelper = createColumnHelper<typeof features, CatalogRow>();
  *  no un dato de trabajo) y por ultimo la clasificacion. SKU, nombre, stock,
  *  precio y estado no se esconden nunca: son la fila. */
 const ANCHO_COLUMNA: Record<string, string> = {
-  sku: "max-w-[22ch] truncate",
   minStock: "hidden xl:table-cell",
-  fotos: "hidden lg:table-cell",
-  clasificacion: "hidden md:table-cell",
+  fotos: "hidden xl:table-cell",
+  clasificacion: "hidden lg:table-cell",
 };
 
 type ProductDialogState =
@@ -107,7 +106,8 @@ export function StockCatalog(props: {
           cell: (ctx) => (
             <Link
               href={`/stock/${ctx.row.original.id}`}
-              className="font-mono text-xs font-medium underline-offset-4 hover:underline"
+              title={ctx.row.original.sku}
+              className="block max-w-[16ch] truncate font-mono text-xs font-medium underline-offset-4 hover:underline lg:max-w-[24ch]"
             >
               {ctx.row.original.sku}
             </Link>
