@@ -60,7 +60,7 @@ export function AppHeader(props: {
             <Button
               variant="ghost"
               size="icon"
-              className="md:hidden"
+              className="lg:hidden"
               aria-label="Abrir menú"
             >
               <Menu className="size-5" />
@@ -109,7 +109,7 @@ export function AppHeader(props: {
         </Link>
 
         {/* Desktop nav */}
-        <nav className="ml-6 hidden items-center gap-1 md:flex">
+        <nav className="ml-6 hidden items-center gap-1 lg:flex">
           {items.map((item) => (
             <Link
               key={item.href}
@@ -131,7 +131,7 @@ export function AppHeader(props: {
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="sm" className="gap-2">
                 <UserRound className="size-4" />
-                <span className="hidden max-w-32 truncate sm:inline">
+                <span className="hidden max-w-32 truncate lg:inline">
                   {userName}
                 </span>
               </Button>
