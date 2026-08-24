@@ -47,6 +47,18 @@ const features = tableFeatures({
 
 const columnHelper = createColumnHelper<typeof features, CatalogRow>();
 
+/** Que columna se esconde y a partir de que ancho.
+ *  El orden de sacrificio va de lo menos a lo mas necesario para operar:
+ *  primero el minimo (se ve en la ficha), despues las fotos (es un recordatorio,
+ *  no un dato de trabajo) y por ultimo la clasificacion. SKU, nombre, stock,
+ *  precio y estado no se esconden nunca: son la fila. */
+const ANCHO_COLUMNA: Record<string, string> = {
+  sku: "max-w-[22ch] truncate",
+  minStock: "hidden xl:table-cell",
+  fotos: "hidden lg:table-cell",
+  clasificacion: "hidden md:table-cell",
+};
+
 type ProductDialogState =
   { mode: "create" } | { mode: "edit"; product: CatalogRow } | null;
 
@@ -319,13 +331,16 @@ export function StockCatalog(props: {
           </Button>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border">
+        <div className="rounded-lg border">
           <Table>
             <TableHeader>
               {table.getHeaderGroups().map((headerGroup) => (
                 <TableRow key={headerGroup.id}>
                   {headerGroup.headers.map((header) => (
-                    <TableHead key={header.id}>
+                    <TableHead
+                      key={header.id}
+                      className={ANCHO_COLUMNA[header.column.id] ?? ""}
+                    >
                       {header.isPlaceholder ? null : header.column.getCanSort() ? (
                         <button
                           type="button"
@@ -353,7 +368,10 @@ export function StockCatalog(props: {
               {table.getRowModel().rows.map((row) => (
                 <TableRow key={row.id}>
                   {row.getAllCells().map((cell) => (
-                    <TableCell key={cell.id}>
+                    <TableCell
+                      key={cell.id}
+                      className={ANCHO_COLUMNA[cell.column.id] ?? ""}
+                    >
                       {flexRender(
                         cell.column.columnDef.cell,
                         cell.getContext(),

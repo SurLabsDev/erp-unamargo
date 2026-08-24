@@ -10,6 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { requireUser } from "@/lib/auth-helpers";
+import { listCatalog } from "../stock/queries";
 import {
   CASH_KIND_LABELS,
   computePeriodSummary,
@@ -71,12 +72,18 @@ export default async function DineroPage(props: PageProps<"/dinero">) {
     page: parsePageParam(searchParams.page),
   };
 
-  const [totals, breakdown, movements, categories] = await Promise.all([
-    periodTotals(period),
-    categoryBreakdown(period),
-    listCashMovements(period, filters),
-    listCategories(),
-  ]);
+  const [totals, breakdown, movements, categories, catalogo] =
+    await Promise.all([
+      periodTotals(period),
+      categoryBreakdown(period),
+      listCashMovements(period, filters),
+      listCategories(),
+      listCatalog(),
+    ]);
+  // Solo los activos: registrar la venta de algo dado de baja no tiene sentido.
+  const productos = catalogo
+    .filter((p) => p.isActive)
+    .map((p) => ({ id: p.id, sku: p.sku, name: p.name, price: p.price }));
   const summary = computePeriodSummary(settings.initialBalance, totals);
   const currency = settings.currencyCode;
 
@@ -124,6 +131,7 @@ export default async function DineroPage(props: PageProps<"/dinero">) {
             </a>
           </Button>
           <NewCashMovementButton
+            productos={productos}
             categories={categories
               .filter((c) => c.isActive)
               .map(({ id, name, kind }) => ({ id, name, kind }))}
