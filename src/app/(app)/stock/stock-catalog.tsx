@@ -331,7 +331,11 @@ export function StockCatalog(props: {
           </Button>
         </div>
       ) : (
-        <div className="rounded-lg border">
+        // De 1024px para arriba las columnas entran y no hay scroll. Abajo de
+        // eso ni cinco columnas entran en un celular, asi que el desborde se
+        // contiene ACA: se corre la tabla, no la pagina. Una pagina que se
+        // corre de costado descoloca el encabezado y el menu.
+        <div className="overflow-x-auto rounded-lg border">
           <Table>
             <TableHeader>
               {table.getHeaderGroups().map((headerGroup) => (
