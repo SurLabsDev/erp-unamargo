@@ -35,6 +35,13 @@ import type { Period } from "@/lib/domain/money";
  *    empleado veria los datos de otro.
  *  - La clave TIENE que incluir las fechas del periodo. Sin eso, el filtro de
  *    fechas del panel devolveria siempre el primer rango que alguien consulto.
+ *  - **Lo que entra a la cache se serializa a JSON.** Un `bigint` revienta con
+ *    "Do not know how to serialize a BigInt", y una `Date` vuelve convertida en
+ *    texto, asi que `Intl` la rechaza con "Invalid time value" y se cae el
+ *    render entero del panel. Las dos cosas pasaron. Por eso lo que guarda
+ *    plata o fechas se convierte ANTES de entrar y se reconstruye al salir,
+ *    en los envoltorios de abajo. Si se agrega una consulta nueva, revisar
+ *    primero si devuelve `Date` o `bigint`.
  */
 export const ETIQUETA_PANEL = "panel";
 
@@ -46,11 +53,21 @@ export const panelBajoStock = unstable_cache(
   OPCIONES,
 );
 
-export const panelMovimientos = unstable_cache(
-  (n: number) => listRecentMovements(n),
+const movimientosCacheados = unstable_cache(
+  async (n: number) =>
+    (await listRecentMovements(n)).map((m) => ({
+      ...m,
+      createdAt: m.createdAt.toISOString(),
+    })),
   ["panel", "movimientos"],
   OPCIONES,
 );
+
+/** La fecha entra como texto y sale como `Date`: en el medio hay un JSON. */
+export async function panelMovimientos(n: number) {
+  const filas = await movimientosCacheados(n);
+  return filas.map((m) => ({ ...m, createdAt: new Date(m.createdAt) }));
+}
 
 export const panelTotales = unstable_cache(
   (period: Period) => periodTotals(period),
@@ -76,11 +93,16 @@ export const panelProductosConSalidas = unstable_cache(
   OPCIONES,
 );
 
-export const panelInventario = unstable_cache(
-  () => valorDelInventario(),
+const inventarioCacheado = unstable_cache(
+  async () => (await valorDelInventario()).toString(),
   ["panel", "inventario"],
   OPCIONES,
 );
+
+/** Los centavos viajan como texto: `bigint` no sobrevive a un JSON. */
+export async function panelInventario(): Promise<bigint> {
+  return BigInt(await inventarioCacheado());
+}
 
 export const panelCajaPorMes = unstable_cache(
   (meses: number) => cajaPorMes(meses),
