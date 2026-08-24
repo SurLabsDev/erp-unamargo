@@ -32,7 +32,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatInteger } from "@/lib/format";
+import { formatInteger, formatMoney } from "@/lib/format";
 import { isLowStock } from "@/lib/domain/stock";
 import { MovementFormDialog } from "./movement-form-dialog";
 import { ProductActiveDialog } from "./product-active-dialog";
@@ -54,8 +54,10 @@ export function StockCatalog(props: {
   rows: CatalogRow[];
   isAdmin: boolean;
   opciones: OpcionClasificacion[];
+  /** Sale de la configuracion de la instancia, nunca fijo en el codigo. */
+  moneda: string;
 }) {
-  const { rows, isAdmin } = props;
+  const { rows, isAdmin, opciones, moneda } = props;
   const [search, setSearch] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const [productDialog, setProductDialog] = useState<ProductDialogState>(null);
@@ -73,6 +75,17 @@ export function StockCatalog(props: {
       );
     });
   }, [rows, search, showInactive]);
+
+  // Las filas traen los IDs de clasificacion, no los nombres. El mapa se arma
+  // una vez y no por celda: son 34 productos hoy pero la lista llega a 150.
+  const nombrePorId = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const cat of opciones) {
+      m.set(cat.id, cat.name);
+      for (const sub of cat.subtypes ?? []) m.set(sub.id, sub.name);
+    }
+    return m;
+  }, [opciones]);
 
   const columns = useMemo(
     () =>
@@ -121,6 +134,53 @@ export function StockCatalog(props: {
             </span>
           ),
         }),
+        columnHelper.accessor("price", {
+          header: "Precio",
+          cell: (ctx) => (
+            // Un producto sin precio no se puede vender en la web: se dice,
+            // no se muestra un cero que parece un precio real.
+            ctx.row.original.price === null ? (
+              <span className="text-muted-foreground">Sin precio</span>
+            ) : (
+              <span className="cifras">
+                {formatMoney(ctx.row.original.price, moneda)}
+              </span>
+            )
+          ),
+        }),
+        columnHelper.display({
+          id: "clasificacion",
+          header: "Clasificación",
+          cell: (ctx) => {
+            const p = ctx.row.original;
+            const cat = p.categoryId ? nombrePorId.get(p.categoryId) : null;
+            const sub = p.subtypeId ? nombrePorId.get(p.subtypeId) : null;
+            if (!cat && !sub) {
+              // Sin clasificar la web no lo puede ubicar en ningun estante.
+              return <span className="text-muted-foreground">Sin clasificar</span>;
+            }
+            return (
+              <span className="text-sm">
+                {cat ?? "—"}
+                {sub ? (
+                  <span className="text-muted-foreground"> · {sub}</span>
+                ) : null}
+              </span>
+            );
+          },
+        }),
+        columnHelper.display({
+          id: "fotos",
+          header: "Fotos",
+          cell: (ctx) => {
+            const n = ctx.row.original.fotos ?? 0;
+            return n === 0 ? (
+              <Badge variant="secondary">Sin fotos</Badge>
+            ) : (
+              <span className="cifras text-muted-foreground">{n}</span>
+            );
+          },
+        }),
         columnHelper.accessor("isActive", {
           header: "Estado",
           cell: (ctx) =>
@@ -151,12 +211,14 @@ export function StockCatalog(props: {
                   </DropdownMenuItem>
                   {isAdmin ? (
                     <>
-                      <DropdownMenuItem
-                        onSelect={() =>
-                          setProductDialog({ mode: "edit", product })
-                        }
-                      >
-                        Editar
+                      {/* Lleva a la MISMA ficha que el SKU, en vez de abrir un
+                          dialogo con la mitad de los campos. Ahi se edita todo:
+                          datos, fotos y texto de la web, y ademas se ve como
+                          queda en la tienda. Dos caminos distintos para editar
+                          lo mismo terminaban en dos formularios que no
+                          coincidian. */}
+                      <DropdownMenuItem asChild>
+                        <Link href={`/stock/${product.id}`}>Editar</Link>
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
@@ -176,7 +238,7 @@ export function StockCatalog(props: {
         // that don't assign to ColumnDef<F, T, unknown>[] — standard TanStack
         // variance wart; the cast is the documented workaround.
       ] as ColumnDef<typeof features, CatalogRow>[],
-    [isAdmin],
+    [isAdmin, moneda, nombrePorId],
   );
 
   const table = useTable({

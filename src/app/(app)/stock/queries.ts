@@ -19,6 +19,7 @@ export const MOVEMENTS_PAGE_SIZE = 50;
 
 export type CatalogRow = Product & {
   hasMovements: boolean;
+  fotos?: number;
   discount?: AppliedDiscount | null;
 };
 
@@ -52,6 +53,10 @@ export async function listCatalog(): Promise<CatalogRow[]> {
       // Identifiers spelled out: interpolating drizzle columns inside a
       // subquery renders them unqualified ("id" resolves to the wrong table).
       hasMovements: sql<boolean>`exists (select 1 from stock_movements sm where sm.product_id = products.id)`,
+      // Cuantas fotos tiene. Un producto sin fotos sale en la web como un
+      // hueco, asi que conviene verlo de un vistazo en la lista y no entrando
+      // a la ficha de a uno.
+      fotos: sql<number>`(select count(*)::int from product_images pi where pi.product_id = products.id)`,
     })
     .from(products)
     .orderBy(desc(products.isActive), asc(products.sku));

@@ -113,16 +113,37 @@ export function CampaignsManager(props: { campaigns: CampaignListRow[] }) {
                       {formatDate(campaign.endsOn)}
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        variant={
-                          campaign.state === "active" ? "default" : "secondary"
-                        }
-                      >
-                        {STATE_LABELS[campaign.state]}
-                      </Badge>
+                      {/* Una campana "Activa" con cero objetivos no descuenta
+                          nada: las fechas corren, el estado dice Activa y en la
+                          web no cambia un solo precio. Decirlo aca evita la
+                          tarde de mirar la tienda esperando un cambio que no
+                          puede pasar. */}
+                      {campaign.state === "active" &&
+                      campaign.targetCount === 0 ? (
+                        <Badge variant="secondary">Activa, sin alcance</Badge>
+                      ) : (
+                        <Badge
+                          variant={
+                            campaign.state === "active"
+                              ? "default"
+                              : "secondary"
+                          }
+                        >
+                          {STATE_LABELS[campaign.state]}
+                        </Badge>
+                      )}
                     </TableCell>
-                    <TableCell className="tabular-nums">
-                      {campaign.targetCount}
+                    <TableCell className="cifras">
+                      {campaign.targetCount === 0 ? (
+                        <Link
+                          href={`/descuentos/${campaign.id}`}
+                          className="text-destructive underline underline-offset-4"
+                        >
+                          Elegir a qué alcanza
+                        </Link>
+                      ) : (
+                        campaign.targetCount
+                      )}
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-right">
                       <Button

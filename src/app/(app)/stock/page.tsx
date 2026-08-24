@@ -4,6 +4,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { requireUser } from "@/lib/auth-helpers";
+import { getSettings } from "@/lib/settings";
 import { StockCatalog } from "./stock-catalog";
 import { listCatalog, listClassificationOptions } from "./queries";
 
@@ -11,9 +12,10 @@ export const metadata: Metadata = { title: "Stock" };
 
 export default async function StockPage() {
   const user = await requireUser();
-  const [rows, opciones] = await Promise.all([
+  const [rows, opciones, settings] = await Promise.all([
     listCatalog(),
     listClassificationOptions(),
+    getSettings(),
   ]);
 
   return (
@@ -34,6 +36,7 @@ export default async function StockPage() {
         rows={rows}
         isAdmin={user.role === "admin"}
         opciones={opciones}
+        moneda={settings.currencyCode}
       />
     </div>
   );
