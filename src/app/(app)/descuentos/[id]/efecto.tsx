@@ -35,9 +35,11 @@ export function EfectoDeLaCampana({ efecto }: { efecto: EfectoCampana }) {
         <h2 className="text-sm font-semibold">¿Movió algo?</h2>
         <p className="mt-1 text-xs text-muted-foreground">
           Unidades que salieron de los productos alcanzados
-          {enCurso ? " hasta hoy" : ""}, contra los{" "}
-          {formatInteger(diasDurante)}{" "}
-          {diasDurante === 1 ? "día" : "días"} anteriores.
+          {enCurso ? " hasta hoy" : ""}, contra{" "}
+          {diasDurante === 1
+            ? "el día anterior"
+            : `los ${formatInteger(diasDurante)} días anteriores`}
+          .
         </p>
       </header>
 
