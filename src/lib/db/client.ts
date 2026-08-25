@@ -18,29 +18,27 @@ if (!process.env.DATABASE_URL && process.env.NODE_ENV === "production") {
 
 // `prepare: false` is required for transaction-mode poolers (pgbouncer).
 //
-// `max: 1` NO es una restriccion arbitraria: es lo que corresponde en
-// serverless. Cada invocacion atiende un pedido, asi que las conexiones de mas
-// no aceleran nada y en cambio multiplican por cinco lo que cada instancia le
-// saca al pooler. Cuando el pool del pooler se llena, las consultas hacen cola
-// hasta morir por `statement_timeout`, y desde afuera se ve como que "la app se
-// cuelga sola": cualquier pantalla, al azar, y peor cuanto mas se usa.
+// DOS HIPOTESIS PROBADAS Y DESCARTADAS, con numeros, para no repetirlas:
 //
-// Las pantallas que disparan varias consultas en paralelo (el panel manda diez)
-// ahora las hacen de a una sobre la misma conexion. A ~100ms cada una eso suma
-// alrededor de un segundo, que es plata bien gastada para que la pantalla
-// cargue SIEMPRE en vez de casi siempre.
+//  1. `max: 3` + `idle_timeout` + `max_lifetime` + `connect_timeout` juntos:
+//     quedo PEOR (la API publica paso de 0.44s a errores 500).
+//  2. `max: 1`, que es lo que "corresponde" en serverless segun el manual:
+//     quedo MUCHO peor. De 32 cargas de pantalla fallaron casi todas, contra
+//     12 con `max: 5`. La razon es concreta: el panel dispara diez consultas en
+//     paralelo y con una sola conexion se hacen en fila, asi que la pantalla mas
+//     cargada se pasa del `statement_timeout` y muere entera.
 //
-// Historia, para no repetirla: un intento anterior puso `max: 3` junto con
-// `idle_timeout`, `max_lifetime` y `connect_timeout` todos a la vez, y quedo
-// PEOR. Se revirtio en bloque. El culpable era casi seguro cerrar conexiones
-// por tiempo contra un pooler en modo transaccion, no el `max`. Si hay que
-// tocar esto, un parametro por vez y midiendo.
+// O sea que el problema NO es la cantidad de conexiones por instancia. Queda
+// documentado el sintoma real por si alguien retoma: sesiones en `active` +
+// `ClientRead` que sobreviven minutos, o sea Postgres esperando a una funcion
+// serverless ya congelada. Se ven asi:
+//   select pid, state, wait_event, now()-xact_start, query from pg_stat_activity;
 // Singleton via globalThis so dev HMR does not leak connections.
 const globalForDb = globalThis as unknown as {
   pgClient?: ReturnType<typeof postgres>;
 };
 
-const client = globalForDb.pgClient ?? postgres(url, { prepare: false, max: 1 });
+const client = globalForDb.pgClient ?? postgres(url, { prepare: false, max: 5 });
 if (process.env.NODE_ENV !== "production") globalForDb.pgClient = client;
 
 export const db = drizzle(client, { schema });
