@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +25,7 @@ import type { CategoryRow } from "./queries";
 import {
   createProductCategoryAction,
   createProductSubtypeAction,
+  moverProductCategoryAction,
   renameProductCategoryAction,
   renameProductSubtypeAction,
   setProductCategoryActiveAction,
@@ -53,6 +55,15 @@ export function CatalogManager(props: { categories: CategoryRow[] }) {
       toast.success(result.message);
       form.reset();
     } else toast.error(result.error);
+  }
+
+  async function mover(id: string, direccion: "arriba" | "abajo") {
+    if (ocupado) return;
+    setOcupado(id);
+    const result = await moverProductCategoryAction(id, direccion);
+    setOcupado(null);
+    if (result.ok) toast.success(result.message);
+    else toast.error(result.error);
   }
 
   async function alternar(
@@ -90,7 +101,7 @@ export function CatalogManager(props: { categories: CategoryRow[] }) {
           </p>
         ) : null}
 
-        {categories.map((categoria) => (
+        {categories.map((categoria, indice) => (
           <div
             key={categoria.id}
             className="grid gap-1.5 rounded-md border p-3"
@@ -119,7 +130,30 @@ export function CatalogManager(props: { categories: CategoryRow[] }) {
                   </span>
                 ) : null}
               </span>
-              <span className="flex shrink-0 gap-1">
+              <span className="flex shrink-0 items-center gap-1">
+                {/* El orden de los estantes en la tienda. Se mueve de a un
+                    lugar en vez de escribir un numero: nadie piensa "Mates es
+                    10", piensan "los mates van primero". */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`Subir ${categoria.name}`}
+                  disabled={indice === 0 || ocupado === categoria.id}
+                  onClick={() => void mover(categoria.id, "arriba")}
+                >
+                  <ChevronUp className="size-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`Bajar ${categoria.name}`}
+                  disabled={
+                    indice === categories.length - 1 || ocupado === categoria.id
+                  }
+                  onClick={() => void mover(categoria.id, "abajo")}
+                >
+                  <ChevronDown className="size-4" />
+                </Button>
                 <Button
                   variant="ghost"
                   size="sm"

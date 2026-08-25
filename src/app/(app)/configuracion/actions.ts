@@ -2,7 +2,7 @@
 
 import { randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
-import { and, count, eq, isNull, lt, ne, sql } from "drizzle-orm";
+import { and, asc, count, eq, isNull, lt, ne, sql } from "drizzle-orm";
 import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import "@/lib/zod-locale";
@@ -791,6 +791,56 @@ export async function setProductSubtypeActiveAction(
         ? `Subtipo "${updated.name}" reactivado.`
         : `Subtipo "${updated.name}" desactivado. Los productos ya clasificados lo conservan.`,
     };
+  } catch (error) {
+    return handleError(error);
+  }
+}
+
+/**
+ * Sube o baja una categoria en el orden de la tienda.
+ *
+ * Ese orden ya viajaba a la web -sale de `sort_order`- pero no habia forma de
+ * editarlo desde ningun lado, asi que en la practica seguia siendo un numero
+ * fijo. Media funcionalidad es peor que ninguna: da la impresion de que se
+ * puede cambiar y no se puede.
+ *
+ * Se intercambia el orden con el vecino en vez de escribir un numero: nadie
+ * quiere pensar en que "Mates es 10 y Bombillas 20", quieren que los mates
+ * vayan primero.
+ */
+export async function moverProductCategoryAction(
+  categoryId: string,
+  direccion: "arriba" | "abajo",
+): Promise<ActionResult> {
+  try {
+    await requireRole("admin");
+    const result = await db.transaction(async (tx): Promise<ActionResult> => {
+      const filas = await tx
+        .select({ id: productCategories.id, sortOrder: productCategories.sortOrder })
+        .from(productCategories)
+        .orderBy(asc(productCategories.sortOrder), asc(productCategories.name));
+
+      const i = filas.findIndex((f) => f.id === categoryId);
+      if (i === -1) return { ok: false, error: "La categoría no existe." };
+      const j = direccion === "arriba" ? i - 1 : i + 1;
+      if (j < 0 || j >= filas.length)
+        return { ok: false, error: "Ya está en el extremo." };
+
+      // Se reescribe TODO el orden con la posicion nueva. Intercambiar solo dos
+      // valores falla cuando varias categorias comparten el mismo numero, que
+      // es lo que pasa cuando alguien crea una y no la acomoda.
+      const nuevo = [...filas];
+      [nuevo[i], nuevo[j]] = [nuevo[j], nuevo[i]];
+      for (const [pos, fila] of nuevo.entries()) {
+        await tx
+          .update(productCategories)
+          .set({ sortOrder: (pos + 1) * 10 })
+          .where(eq(productCategories.id, fila.id));
+      }
+      return { ok: true, message: "Orden actualizado." };
+    });
+    if (result.ok) await revalidateCatalog();
+    return result;
   } catch (error) {
     return handleError(error);
   }
