@@ -41,6 +41,7 @@ export async function GET(): Promise<Response> {
         categoryId: products.categoryId,
         categoryName: productCategories.name,
         categorySlug: productCategories.slug,
+        categorySort: productCategories.sortOrder,
         subtypeId: products.subtypeId,
         subtypeName: productSubtypes.name,
         subtypeSlug: productSubtypes.slug,
@@ -109,7 +110,14 @@ export async function GET(): Promise<Response> {
             : null,
           description: row.description,
           category: row.categoryName
-            ? { name: row.categoryName, slug: row.categorySlug }
+            ? {
+                name: row.categoryName,
+                slug: row.categorySlug,
+                // El orden de los estantes en la tienda lo decide el ERP, no la
+                // web: cambiar en que orden se muestran los rubros no puede
+                // requerir un deploy del sitio.
+                sort: row.categorySort ?? 0,
+              }
             : null,
           subtype: row.subtypeName
             ? { name: row.subtypeName, slug: row.subtypeSlug }
