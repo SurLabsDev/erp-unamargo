@@ -236,6 +236,11 @@ export type EfectoCampana = {
   diasDurante: number;
   diasAntes: number;
   enCurso: boolean;
+  /** Unidades vendidas CON esta campana aplicada, y lo que se facturo. Solo
+   *  cuenta lo que se registro como venta desde Dinero: una salida cargada a
+   *  mano en Stock no sabe a que precio salio. */
+  unidadesVendidas: number;
+  facturado: string;
 };
 
 /**
@@ -278,6 +283,8 @@ export async function efectoDeCampana(
       diasDurante: 0,
       diasAntes: 0,
       enCurso: false,
+      unidadesVendidas: 0,
+      facturado: "0",
     };
   }
 
@@ -311,6 +318,8 @@ export async function efectoDeCampana(
       diasDurante,
       diasAntes: diasDurante,
       enCurso: campana.endsOn >= hoyISO,
+      unidadesVendidas: 0,
+      facturado: "0",
     };
   }
 
@@ -331,12 +340,26 @@ export async function efectoDeCampana(
     return fila?.total ?? 0;
   };
 
-  const [unidadesDurante, unidadesAntes] = await Promise.all([
+  const ventas = async () => {
+    const [fila] = await db
+      .select({
+        unidades: sql<number>`coalesce(sum(-${stockMovements.delta}), 0)::int`,
+        total: sql<string>`coalesce(sum(-${stockMovements.delta} * ${stockMovements.unitPrice}), 0)::text`,
+      })
+      .from(stockMovements)
+      .where(eq(stockMovements.campaignId, campaignId));
+    return { unidades: fila?.unidades ?? 0, total: fila?.total ?? "0" };
+  };
+
+  const [unidadesDurante, unidadesAntes, vendido] = await Promise.all([
     salidas(desde, hasta),
     salidas(desdeAntes, hastaAntes),
+    ventas(),
   ]);
 
   return {
+    unidadesVendidas: vendido.unidades,
+    facturado: vendido.total,
     productosAlcanzados: ids.length,
     unidadesDurante,
     unidadesAntes,

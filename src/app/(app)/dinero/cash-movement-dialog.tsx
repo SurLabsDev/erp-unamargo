@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { createCashMovementAction } from "./actions";
+import { createCashMovementAction, registerSaleAction } from "./actions";
 
 type CategoryOption = { id: string; name: string; kind: "income" | "expense" };
 export type ProductoVendible = {
@@ -65,6 +65,10 @@ function CashMovementForm(props: {
   const [concepto, setConcepto] = useState("");
   const [monto, setMonto] = useState("");
   const [busqueda, setBusqueda] = useState("");
+  // Si hay producto elegido, esto deja de ser "anotar plata" y pasa a ser una
+  // VENTA: descuenta stock ademas de anotar el ingreso.
+  const [producto, setProducto] = useState<ProductoVendible | null>(null);
+  const [cantidad, setCantidad] = useState("1");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -80,8 +84,8 @@ function CashMovementForm(props: {
   });
 
   function elegirProducto(p: ProductoVendible) {
-    setConcepto(`Venta: ${p.name}`);
-    if (p.price !== null) setMonto(p.price);
+    setProducto(p);
+    setCantidad("1");
     setPaso(3);
   }
 
@@ -93,7 +97,13 @@ function CashMovementForm(props: {
     const formData = new FormData(event.currentTarget);
     formData.set("kind", kind);
     formData.set("categoryId", categoryId);
-    const result = await createCashMovementAction(formData);
+    const result = producto
+      ? await (async () => {
+          formData.set("productId", producto.id);
+          formData.set("quantity", cantidad);
+          return registerSaleAction(formData);
+        })()
+      : await createCashMovementAction(formData);
     setSubmitting(false);
     if (result.ok) {
       toast.success(result.message);
@@ -211,42 +221,81 @@ function CashMovementForm(props: {
                     </p>
                   ) : null}
                 </div>
-                {/* Se dice explicito para que nadie crea que esto descuenta el
-                    inventario: aca se anota la PLATA. El stock se mueve en su
-                    propia pantalla, y confundirlos deja el deposito mintiendo. */}
                 <p className="text-xs text-muted-foreground">
-                  Esto completa el concepto y el monto. El stock se descuenta
-                  aparte, desde Stock.
+                  Elegir un producto lo registra como venta: descuenta el stock
+                  y anota la plata de una sola vez.
                 </p>
               </div>
             ) : null}
 
-            <div className="grid gap-2">
-              <Label htmlFor="cash-concept">Concepto</Label>
-              <Input
-                id="cash-concept"
-                name="concept"
-                maxLength={200}
-                required
-                value={concepto}
-                onChange={(e) => setConcepto(e.target.value)}
-                placeholder="p. ej., Ventas de la semana"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
+            {producto ? (
+              <div className="grid gap-3 rounded-md border p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">
+                      {producto.name}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Se descuenta del stock al registrar.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setProducto(null)}
+                  >
+                    Quitar
+                  </Button>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="venta-cantidad">Cantidad</Label>
+                  <Input
+                    id="venta-cantidad"
+                    inputMode="numeric"
+                    value={cantidad}
+                    onChange={(e) => setCantidad(e.target.value)}
+                    required
+                  />
+                </div>
+                {/* El precio NO se escribe a mano: lo pone el sistema con el
+                    descuento vigente. Si se pudiera escribir, la campana
+                    quedaria registrada con un precio que nadie cobro. */}
+                <p className="text-xs text-muted-foreground">
+                  El precio sale del catálogo, con el descuento que esté
+                  vigente.
+                </p>
+              </div>
+            ) : (
               <div className="grid gap-2">
-                <Label htmlFor="cash-amount">Monto</Label>
+                <Label htmlFor="cash-concept">Concepto</Label>
                 <Input
-                  id="cash-amount"
-                  name="amount"
-                  inputMode="decimal"
-                  placeholder="0,00"
+                  id="cash-concept"
+                  name="concept"
+                  maxLength={200}
                   required
-                  value={monto}
-                  onChange={(e) => setMonto(e.target.value)}
+                  value={concepto}
+                  onChange={(e) => setConcepto(e.target.value)}
+                  placeholder="p. ej., Ventas de la semana"
                 />
               </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-4">
+              {producto ? null : (
+                <div className="grid gap-2">
+                  <Label htmlFor="cash-amount">Monto</Label>
+                  <Input
+                    id="cash-amount"
+                    name="amount"
+                    inputMode="decimal"
+                    placeholder="0,00"
+                    required
+                    value={monto}
+                    onChange={(e) => setMonto(e.target.value)}
+                  />
+                </div>
+              )}
               <div className="grid gap-2">
                 <Label htmlFor="cash-date">Fecha</Label>
                 <Input
@@ -289,7 +338,11 @@ function CashMovementForm(props: {
           </Button>
           {paso === 3 ? (
             <Button type="submit" disabled={submitting || categoryId === ""}>
-              {submitting ? "Registrando…" : "Registrar"}
+              {submitting
+                ? "Registrando…"
+                : producto
+                  ? "Registrar venta"
+                  : "Registrar"}
             </Button>
           ) : null}
         </DialogFooter>

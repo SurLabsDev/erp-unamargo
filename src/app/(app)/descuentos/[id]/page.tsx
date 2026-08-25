@@ -69,7 +69,7 @@ export default async function CampaignDetailPage(
         endsOn={campaign.endsOn}
       />
 
-      <EfectoDeLaCampana efecto={efecto} />
+      <EfectoDeLaCampana efecto={efecto} moneda={settings.currencyCode} />
 
       <TargetsManager
         campaignId={campaign.id}

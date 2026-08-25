@@ -1,4 +1,4 @@
-import { formatInteger } from "@/lib/format";
+import { formatInteger, formatMoney } from "@/lib/format";
 import type { EfectoCampana } from "../queries";
 
 /**
@@ -15,13 +15,21 @@ import type { EfectoCampana } from "../queries";
  * días justo antes. Es una comparación honesta y suele alcanzar para saber si
  * vale la pena repetirla.
  */
-export function EfectoDeLaCampana({ efecto }: { efecto: EfectoCampana }) {
+export function EfectoDeLaCampana({
+  efecto,
+  moneda,
+}: {
+  efecto: EfectoCampana;
+  moneda: string;
+}) {
   const {
     productosAlcanzados,
     unidadesDurante,
     unidadesAntes,
     diasDurante,
     enCurso,
+    unidadesVendidas,
+    facturado,
   } = efecto;
 
   const variacion =
@@ -94,6 +102,35 @@ export function EfectoDeLaCampana({ efecto }: { efecto: EfectoCampana }) {
               </p>
             </div>
           </dl>
+
+          {/* Lo vendido CON la campana aplicada. Se separa de lo de arriba a
+              proposito: arriba es "se movio", esto es "se vendio a este
+              precio". Solo cuenta lo registrado como venta desde Dinero. */}
+          <div className="border-t px-4 py-4">
+            <p className="text-xs text-muted-foreground">
+              Vendido con el descuento aplicado
+            </p>
+            {unidadesVendidas === 0 ? (
+              <p className="mt-1 text-sm text-muted-foreground">
+                Todavía no se registró ninguna venta de estos productos desde
+                Dinero. Las salidas cargadas a mano en Stock no cuentan acá:
+                no guardan a qué precio salieron.
+              </p>
+            ) : (
+              <p className="mt-1 flex flex-wrap items-baseline gap-x-3">
+                <span className="type-display cifras text-2xl">
+                  {formatInteger(unidadesVendidas)}
+                </span>
+                <span className="text-sm text-muted-foreground">
+                  {unidadesVendidas === 1 ? "unidad" : "unidades"}
+                </span>
+                <span className="type-display cifras text-2xl">
+                  {formatMoney(facturado, moneda)}
+                </span>
+                <span className="text-sm text-muted-foreground">facturado</span>
+              </p>
+            )}
+          </div>
 
           {/* La advertencia va abajo del numero y no escondida en una ayuda:
               quien mira esto esta por decidir si repite la campana. */}

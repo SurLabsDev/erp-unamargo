@@ -50,6 +50,13 @@
       "when": 1787136711568,
       "tag": "0006_spicy_blizzard",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1787615677754,
+      "tag": "0007_venta_precio_campana",
+      "breakpoints": true
     }
   ]
 }

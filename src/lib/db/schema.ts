@@ -272,6 +272,12 @@ export const stockMovements = pgTable(
     delta: integer("delta").notNull(), // signed
     resultingStock: integer("resulting_stock").notNull(),
     note: text("note"), // required in app when type = 'adjustment'
+    // Que precio tenia la unidad cuando salio, y bajo que campana. Se llenan
+    // SOLO cuando la salida se registra como venta; una rotura o un ajuste los
+    // dejan en null. Sin esto no se puede contestar "cuanto vendi con este
+    // descuento": el precio de hoy no dice a cuanto salio algo hace un mes.
+    unitPrice: numeric("unit_price", { precision: 12, scale: 2 }),
+    campaignId: uuid("campaign_id").references(() => discountCampaigns.id),
     createdBy: uuid("created_by")
       .notNull()
       .references(() => users.id),
