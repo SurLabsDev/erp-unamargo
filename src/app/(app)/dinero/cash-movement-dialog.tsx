@@ -14,7 +14,11 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { createCashMovementAction, registerSaleAction } from "./actions";
+import {
+  createCashMovementAction,
+  registerSaleAction,
+  registrarCompraAction,
+} from "./actions";
 
 type CategoryOption = { id: string; name: string; kind: "income" | "expense" };
 export type ProductoVendible = {
@@ -67,8 +71,11 @@ function CashMovementForm(props: {
   const [busqueda, setBusqueda] = useState("");
   // Si hay producto elegido, esto deja de ser "anotar plata" y pasa a ser una
   // VENTA: descuenta stock ademas de anotar el ingreso.
-  const [producto, setProducto] = useState<ProductoVendible | null>(null);
-  const [cantidad, setCantidad] = useState("1");
+  /** Las lineas de la operacion. Una venta comun es un mate MAS una bombilla,
+   *  y una compra al proveedor son diez articulos de la misma factura. */
+  const [lineas, setLineas] = useState<
+    { id: string; nombre: string; cantidad: string; precio: string }[]
+  >([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -83,11 +90,42 @@ function CashMovementForm(props: {
     );
   });
 
-  function elegirProducto(p: ProductoVendible) {
-    setProducto(p);
-    setCantidad("1");
-    setPaso(3);
+  /** Con productos: la categoria mueve stock ademas de plata. Los ingresos que
+   *  no son ventas -una devolucion, vender una estanteria vieja- y los egresos
+   *  que no son mercaderia -alquiler, envios- no llevan productos. */
+  const conProductos =
+    categoriaElegida !== undefined &&
+    /venta|mercader/i.test(categoriaElegida.name);
+
+  function agregarProducto(p: ProductoVendible) {
+    setLineas((ls) =>
+      ls.some((l) => l.id === p.id)
+        ? ls.map((l) =>
+            l.id === p.id
+              ? { ...l, cantidad: String(Number(l.cantidad || "0") + 1) }
+              : l,
+          )
+        : [
+            ...ls,
+            {
+              id: p.id,
+              nombre: p.name,
+              cantidad: "1",
+              // El precio arranca en el del catalogo y se puede editar: un
+              // "precio amigo" es una venta real y se registra por lo que se
+              // cobro. En una compra arranca vacio, porque lo que se paga al
+              // proveedor no tiene por que parecerse al precio de venta.
+              precio: kind === "income" ? (p.price ?? "") : "",
+            },
+          ],
+    );
+    setBusqueda("");
   }
+
+  const total = lineas.reduce(
+    (a, l) => a + (Number(l.precio) || 0) * (Number(l.cantidad) || 0),
+    0,
+  );
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -97,13 +135,25 @@ function CashMovementForm(props: {
     const formData = new FormData(event.currentTarget);
     formData.set("kind", kind);
     formData.set("categoryId", categoryId);
-    const result = producto
-      ? await (async () => {
-          formData.set("productId", producto.id);
-          formData.set("quantity", cantidad);
-          return registerSaleAction(formData);
-        })()
-      : await createCashMovementAction(formData);
+    let result;
+    if (conProductos && lineas.length > 0) {
+      formData.set(
+        "lineas",
+        JSON.stringify(
+          lineas.map((l) => ({
+            productId: l.id,
+            cantidad: Number(l.cantidad),
+            precio: Number(l.precio || 0).toFixed(2),
+          })),
+        ),
+      );
+      result =
+        kind === "income"
+          ? await registerSaleAction(formData)
+          : await registrarCompraAction(formData);
+    } else {
+      result = await createCashMovementAction(formData);
+    }
     setSubmitting(false);
     if (result.ok) {
       toast.success(result.message);
@@ -183,106 +233,153 @@ function CashMovementForm(props: {
           </div>
         ) : null}
 
-        {/* PASO 3: el detalle. Para un ingreso se ofrece elegir el producto, que
-            completa concepto y monto solo. */}
+        {/* PASO 3: el detalle. Con productos es una lista de lineas; sin
+            productos, el concepto y el monto de siempre. */}
         {paso === 3 ? (
           <div className="grid gap-4">
-            {kind === "income" && productos.length > 0 ? (
-              <div className="grid gap-2">
-                <Label htmlFor="buscar-producto">
-                  ¿Qué producto vendiste?{" "}
-                  <span className="font-normal text-muted-foreground">
-                    (opcional)
-                  </span>
-                </Label>
-                <Input
-                  id="buscar-producto"
-                  value={busqueda}
-                  onChange={(e) => setBusqueda(e.target.value)}
-                  placeholder="Buscá por nombre o SKU…"
-                />
-                <div className="max-h-44 overflow-y-auto rounded-md border">
-                  {vendibles.slice(0, 40).map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => elegirProducto(p)}
-                      className="flex w-full items-center justify-between gap-3 border-b px-3 py-2 text-left text-sm last:border-b-0 transition-colors hover:bg-accent"
-                    >
-                      <span className="truncate">{p.name}</span>
-                      <span className="cifras shrink-0 text-muted-foreground">
-                        {p.price === null ? "sin precio" : p.price}
-                      </span>
-                    </button>
-                  ))}
-                  {vendibles.length === 0 ? (
-                    <p className="px-3 py-3 text-sm text-muted-foreground">
-                      Ningún producto coincide.
-                    </p>
+            {conProductos ? (
+              <>
+                <div className="grid gap-2">
+                  <Label htmlFor="buscar-producto">
+                    {kind === "income"
+                      ? "¿Qué vendiste?"
+                      : "¿Qué mercadería entró?"}
+                  </Label>
+                  <Input
+                    id="buscar-producto"
+                    value={busqueda}
+                    onChange={(e) => setBusqueda(e.target.value)}
+                    placeholder="Buscá por nombre o SKU…"
+                  />
+                  {busqueda.trim() !== "" ? (
+                    <div className="max-h-40 overflow-y-auto rounded-md border">
+                      {vendibles.slice(0, 30).map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => agregarProducto(p)}
+                          className="flex w-full items-center justify-between gap-3 border-b px-3 py-2 text-left text-sm last:border-b-0 transition-colors hover:bg-accent"
+                        >
+                          <span className="truncate">{p.name}</span>
+                          <span className="cifras shrink-0 text-muted-foreground">
+                            {p.price ?? "sin precio"}
+                          </span>
+                        </button>
+                      ))}
+                      {vendibles.length === 0 ? (
+                        <p className="px-3 py-3 text-sm text-muted-foreground">
+                          Ningún producto coincide.
+                        </p>
+                      ) : null}
+                    </div>
                   ) : null}
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Elegir un producto lo registra como venta: descuenta el stock
-                  y anota la plata de una sola vez.
-                </p>
-              </div>
-            ) : null}
 
-            {producto ? (
-              <div className="grid gap-3 rounded-md border p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">
-                      {producto.name}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Se descuenta del stock al registrar.
+                {lineas.length > 0 ? (
+                  <div className="grid gap-2">
+                    {lineas.map((l, i) => (
+                      <div
+                        key={l.id}
+                        className="grid gap-2 rounded-md border p-3"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="truncate text-sm font-medium">
+                            {l.nombre}
+                          </p>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              setLineas((ls) => ls.filter((x) => x.id !== l.id))
+                            }
+                          >
+                            Quitar
+                          </Button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="grid gap-1">
+                            <Label
+                              htmlFor={`cant-${i}`}
+                              className="text-xs text-muted-foreground"
+                            >
+                              Cantidad
+                            </Label>
+                            <Input
+                              id={`cant-${i}`}
+                              inputMode="numeric"
+                              value={l.cantidad}
+                              onChange={(e) =>
+                                setLineas((ls) =>
+                                  ls.map((x) =>
+                                    x.id === l.id
+                                      ? { ...x, cantidad: e.target.value }
+                                      : x,
+                                  ),
+                                )
+                              }
+                            />
+                          </div>
+                          <div className="grid gap-1">
+                            <Label
+                              htmlFor={`prec-${i}`}
+                              className="text-xs text-muted-foreground"
+                            >
+                              {kind === "income"
+                                ? "Precio unitario"
+                                : "Costo unitario"}
+                            </Label>
+                            <Input
+                              id={`prec-${i}`}
+                              inputMode="decimal"
+                              value={l.precio}
+                              onChange={(e) =>
+                                setLineas((ls) =>
+                                  ls.map((x) =>
+                                    x.id === l.id
+                                      ? { ...x, precio: e.target.value }
+                                      : x,
+                                  ),
+                                )
+                              }
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    <p className="text-right text-sm">
+                      Total{" "}
+                      <span className="type-display cifras text-lg">
+                        {total.toFixed(2)}
+                      </span>
                     </p>
                   </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setProducto(null)}
-                  >
-                    Quitar
-                  </Button>
-                </div>
+                ) : (
+                  <p className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
+                    Buscá y agregá los productos. Podés poner varios.
+                  </p>
+                )}
+
+                <p className="text-xs text-muted-foreground">
+                  {kind === "income"
+                    ? "El precio viene del catálogo con el descuento vigente, y se puede editar."
+                    : "Se suma al stock. El costo es el que pagaste, sin promedios ni supuestos."}
+                </p>
+              </>
+            ) : (
+              <>
                 <div className="grid gap-2">
-                  <Label htmlFor="venta-cantidad">Cantidad</Label>
+                  <Label htmlFor="cash-concept">Concepto</Label>
                   <Input
-                    id="venta-cantidad"
-                    inputMode="numeric"
-                    value={cantidad}
-                    onChange={(e) => setCantidad(e.target.value)}
+                    id="cash-concept"
+                    name="concept"
+                    maxLength={200}
                     required
+                    value={concepto}
+                    onChange={(e) => setConcepto(e.target.value)}
+                    placeholder="p. ej., Ventas de la semana"
                   />
                 </div>
-                {/* El precio NO se escribe a mano: lo pone el sistema con el
-                    descuento vigente. Si se pudiera escribir, la campana
-                    quedaria registrada con un precio que nadie cobro. */}
-                <p className="text-xs text-muted-foreground">
-                  El precio sale del catálogo, con el descuento que esté
-                  vigente.
-                </p>
-              </div>
-            ) : (
-              <div className="grid gap-2">
-                <Label htmlFor="cash-concept">Concepto</Label>
-                <Input
-                  id="cash-concept"
-                  name="concept"
-                  maxLength={200}
-                  required
-                  value={concepto}
-                  onChange={(e) => setConcepto(e.target.value)}
-                  placeholder="p. ej., Ventas de la semana"
-                />
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-4">
-              {producto ? null : (
                 <div className="grid gap-2">
                   <Label htmlFor="cash-amount">Monto</Label>
                   <Input
@@ -295,19 +392,20 @@ function CashMovementForm(props: {
                     onChange={(e) => setMonto(e.target.value)}
                   />
                 </div>
-              )}
-              <div className="grid gap-2">
-                <Label htmlFor="cash-date">Fecha</Label>
-                <Input
-                  id="cash-date"
-                  name="date"
-                  type="date"
-                  defaultValue={todayISO}
-                  min={minDateISO}
-                  max={todayISO}
-                  required
-                />
-              </div>
+              </>
+            )}
+
+            <div className="grid gap-2">
+              <Label htmlFor="cash-date">Fecha</Label>
+              <Input
+                id="cash-date"
+                name="date"
+                type="date"
+                defaultValue={todayISO}
+                min={minDateISO}
+                max={todayISO}
+                required
+              />
             </div>
           </div>
         ) : null}
@@ -337,11 +435,20 @@ function CashMovementForm(props: {
             {paso === 1 ? "Cancelar" : "Atrás"}
           </Button>
           {paso === 3 ? (
-            <Button type="submit" disabled={submitting || categoryId === ""}>
+            <Button
+              type="submit"
+              disabled={
+                submitting ||
+                categoryId === "" ||
+                (conProductos && lineas.length === 0)
+              }
+            >
               {submitting
                 ? "Registrando…"
-                : producto
-                  ? "Registrar venta"
+                : conProductos
+                  ? kind === "income"
+                    ? "Registrar venta"
+                    : "Registrar compra"
                   : "Registrar"}
             </Button>
           ) : null}

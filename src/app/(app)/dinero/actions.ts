@@ -151,151 +151,201 @@ export async function voidCashMovementAction(
   }
 }
 
-const ventaSchema = z.object({
-  date: z.string(),
+const lineaSchema = z.object({
   productId: z.string().uuid(),
+  cantidad: z.coerce.number().int().positive(),
+  /** Precio unitario efectivamente cobrado o pagado. Viene del catalogo pero
+   *  se puede editar: un "precio amigo" es una venta real y tiene que quedar
+   *  registrada por lo que se cobro, no por lo que decia la lista. */
+  precio: z.string().regex(/^\d+(\.\d{1,2})?$/, "Precio inválido."),
+});
+
+const operacionSchema = z.object({
+  date: z.string(),
   categoryId: z.string().uuid(),
-  quantity: z.coerce.number().int().positive("La cantidad tiene que ser mayor a cero."),
+  lineas: z.array(lineaSchema).min(1, "No cargaste ningún producto."),
+  nota: z.string().trim().max(200).optional(),
 });
 
 /**
- * Una venta: descuenta el stock Y anota la plata, o no hace ninguna de las dos.
+ * Una operacion que mueve stock y plata a la vez, con varias lineas.
  *
- * Antes eran dos anotaciones sueltas en dos pantallas, asi que registrar una
- * venta en Dinero dejaba el deposito diciendo que la mercaderia seguia ahi.
- * Van juntas en UNA transaccion: si el stock no alcanza, tampoco se anota la
- * plata, porque un ingreso sin la salida que lo genero es un descuadre que
- * despues nadie sabe de donde salio.
+ * Es comun que alguien se lleve un mate y una bombilla: eso es UNA venta con
+ * dos lineas, no dos ventas. Y una compra al proveedor son diez articulos en la
+ * misma factura.
  *
- * El precio se congela ACA, con el descuento vigente al momento de vender. Es
- * lo unico que permite contestar despues "cuanto vendi con esta campana": el
- * precio de hoy no dice a cuanto salio algo la semana pasada.
+ * Todo en una transaccion: si una linea no tiene stock, no se anota ni el resto
+ * de las lineas ni la plata. Media venta registrada es peor que ninguna, porque
+ * la caja y el deposito quedan contando historias distintas.
  */
+async function registrarOperacion(
+  tipo: "venta" | "compra",
+  formData: FormData,
+): Promise<ActionResult> {
+  const user = await requireRole();
+  let lineasCrudas: unknown;
+  try {
+    lineasCrudas = JSON.parse(String(formData.get("lineas") ?? "[]"));
+  } catch {
+    return { ok: false, error: "No se pudieron leer los productos." };
+  }
+  const parsed = operacionSchema.safeParse({
+    date: formData.get("date"),
+    categoryId: formData.get("categoryId"),
+    lineas: lineasCrudas,
+    nota: formData.get("nota") ?? undefined,
+  });
+  if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
+  const input = parsed.data;
+
+  const campanas = tipo === "venta" ? await listCampaignsWithTargets() : [];
+
+  const result = await db.transaction(async (tx): Promise<ActionResult> => {
+    await tx.execute(sql`select pg_advisory_xact_lock_shared(${BALANCE_LOCK})`);
+    const [instance] = await tx.select().from(settings).limit(1);
+    if (!instance)
+      return { ok: false, error: "La instancia no está configurada." };
+
+    const hoy = todayInTimeZone(instance.timezone);
+    const dateError = validateCashDate(
+      input.date,
+      hoy,
+      instance.initialBalanceDate,
+    );
+    if (dateError) return { ok: false, error: dateError };
+
+    const [category] = await tx
+      .select()
+      .from(cashCategories)
+      .where(eq(cashCategories.id, input.categoryId))
+      .limit(1);
+    if (!category || !category.isActive)
+      return { ok: false, error: "La categoría no existe o está inactiva." };
+    const esperado = tipo === "venta" ? "income" : "expense";
+    if (category.kind !== esperado)
+      return {
+        ok: false,
+        error:
+          tipo === "venta"
+            ? "Una venta se anota como ingreso."
+            : "Una compra se anota como egreso.",
+      };
+
+    let total = 0;
+    const nombres: string[] = [];
+
+    for (const linea of input.lineas) {
+      const delta = tipo === "venta" ? -linea.cantidad : linea.cantidad;
+
+      const filas = (await tx.execute(sql`
+        update ${products}
+        set current_stock = current_stock + ${delta}, updated_at = now()
+        where id = ${linea.productId} and is_active
+          and current_stock + ${delta} >= 0
+        returning current_stock, name
+      `)) as unknown as Array<{ current_stock: number; name: string }>;
+
+      if (filas.length === 0) {
+        const [p] = await tx
+          .select({
+            name: products.name,
+            isActive: products.isActive,
+            currentStock: products.currentStock,
+          })
+          .from(products)
+          .where(eq(products.id, linea.productId))
+          .limit(1);
+        if (!p) return { ok: false, error: "Un producto ya no existe." };
+        if (!p.isActive)
+          return { ok: false, error: `"${p.name}" está inactivo.` };
+        return {
+          ok: false,
+          error: `No hay stock suficiente de "${p.name}": quedan ${p.currentStock}. No se registró nada.`,
+        };
+      }
+
+      // La campana se guarda aunque el precio se haya editado: el producto se
+      // vendio bajo esa campana igual, y el precio anotado es el que se cobro.
+      let campaignId: string | null = null;
+      if (tipo === "venta") {
+        const [prod] = await tx
+          .select({
+            id: products.id,
+            price: products.price,
+            categoryId: products.categoryId,
+            subtypeId: products.subtypeId,
+          })
+          .from(products)
+          .where(eq(products.id, linea.productId))
+          .limit(1);
+        if (prod) {
+          const d = resolveDiscount(prod, campanas, hoy);
+          campaignId = d?.campaignId ?? null;
+        }
+      }
+
+      await tx.insert(stockMovements).values({
+        productId: linea.productId,
+        type: tipo === "venta" ? "out" : "in",
+        delta,
+        resultingStock: filas[0].current_stock,
+        note: tipo === "venta" ? "Venta" : (input.nota?.trim() || "Compra"),
+        unitPrice: linea.precio,
+        campaignId,
+        createdBy: user.id,
+      });
+
+      total += Number(linea.precio) * linea.cantidad;
+      nombres.push(`${linea.cantidad} x ${filas[0].name}`);
+    }
+
+    await tx.insert(cashMovements).values({
+      date: input.date,
+      kind: tipo === "venta" ? "income" : "expense",
+      categoryId: input.categoryId,
+      concept:
+        input.nota?.trim() ||
+        `${tipo === "venta" ? "Venta" : "Compra"}: ${nombres.join(", ").slice(0, 180)}`,
+      amount: total.toFixed(2),
+      createdBy: user.id,
+    });
+
+    const n = input.lineas.length;
+    return {
+      ok: true,
+      message: `${tipo === "venta" ? "Venta" : "Compra"} registrada: ${n} ${n === 1 ? "producto" : "productos"}. Stock y caja actualizados.`,
+    };
+  });
+
+  if (result.ok) {
+    revalidateCash();
+    revalidatePath("/stock");
+    revalidatePath("/stock/movimientos");
+    updateTag(ETIQUETA_PANEL);
+    await avisarALaWeb();
+  }
+  return result;
+}
+
 export async function registerSaleAction(
   formData: FormData,
 ): Promise<ActionResult> {
   try {
-    const user = await requireRole();
-    const parsed = ventaSchema.safeParse({
-      date: formData.get("date"),
-      productId: formData.get("productId"),
-      categoryId: formData.get("categoryId"),
-      quantity: formData.get("quantity"),
-    });
-    if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
-    const input = parsed.data;
+    return await registrarOperacion("venta", formData);
+  } catch (error) {
+    return handleError(error);
+  }
+}
 
-    const campanas = await listCampaignsWithTargets();
-
-    const result = await db.transaction(async (tx): Promise<ActionResult> => {
-      await tx.execute(
-        sql`select pg_advisory_xact_lock_shared(${BALANCE_LOCK})`,
-      );
-      const [instance] = await tx.select().from(settings).limit(1);
-      if (!instance)
-        return { ok: false, error: "La instancia no está configurada." };
-
-      const hoy = todayInTimeZone(instance.timezone);
-      const dateError = validateCashDate(
-        input.date,
-        hoy,
-        instance.initialBalanceDate,
-      );
-      if (dateError) return { ok: false, error: dateError };
-
-      const [category] = await tx
-        .select()
-        .from(cashCategories)
-        .where(eq(cashCategories.id, input.categoryId))
-        .limit(1);
-      if (!category || !category.isActive)
-        return { ok: false, error: "La categoría no existe o está inactiva." };
-      if (category.kind !== "income")
-        return { ok: false, error: "Una venta se anota como ingreso." };
-
-      const [producto] = await tx
-        .select()
-        .from(products)
-        .where(eq(products.id, input.productId))
-        .limit(1);
-      if (!producto) return { ok: false, error: "El producto no existe." };
-      if (producto.price === null)
-        return {
-          ok: false,
-          error: "El producto no tiene precio: no se puede vender.",
-        };
-
-      const descuento = resolveDiscount(
-        {
-          id: producto.id,
-          price: producto.price,
-          categoryId: producto.categoryId,
-          subtypeId: producto.subtypeId,
-        },
-        campanas,
-        hoy,
-      );
-      const precioUnitario = descuento ? descuento.priceFinal : producto.price;
-      const total = (Number(precioUnitario) * input.quantity).toFixed(2);
-
-      // Mismo update guardado que el resto del stock: nunca leer y despues
-      // escribir sin candado, o dos ventas simultaneas dejan el stock negativo.
-      const filas = (await tx.execute(sql`
-        update ${products}
-        set current_stock = current_stock - ${input.quantity}, updated_at = now()
-        where id = ${input.productId} and is_active
-          and current_stock - ${input.quantity} >= 0
-        returning current_stock
-      `)) as unknown as Array<{ current_stock: number }>;
-
-      if (filas.length === 0) {
-        return {
-          ok: false,
-          error: producto.isActive
-            ? `No hay stock suficiente: quedan ${producto.currentStock}.`
-            : "El producto está inactivo.",
-        };
-      }
-
-      await tx.insert(stockMovements).values({
-        productId: input.productId,
-        type: "out",
-        delta: -input.quantity,
-        resultingStock: filas[0].current_stock,
-        note: `Venta${descuento ? ` (${descuento.campaignName})` : ""}`,
-        unitPrice: precioUnitario,
-        campaignId: descuento?.campaignId ?? null,
-        createdBy: user.id,
-      });
-
-      await tx.insert(cashMovements).values({
-        date: input.date,
-        kind: "income",
-        categoryId: input.categoryId,
-        concept: `Venta: ${input.quantity} x ${producto.name}`,
-        amount: total,
-        createdBy: user.id,
-      });
-
-      return {
-        ok: true,
-        message: `Venta registrada: ${input.quantity} x ${producto.name}. Stock y caja actualizados.`,
-      };
-    });
-
-    if (result.ok) {
-      // Una venta toca los dos libros, asi que hay que refrescar las dos
-      // pantallas. No se importa el helper de stock: ese archivo es
-      // "use server" y exportar de ahi algo que no es una accion rompe el
-      // contrato de Next.
-      revalidateCash();
-      revalidatePath("/stock");
-      revalidatePath(`/stock/${input.productId}`);
-      revalidatePath("/stock/movimientos");
-      updateTag(ETIQUETA_PANEL);
-      await avisarALaWeb();
-    }
-    return result;
+/** Compra de mercaderia: suma stock y anota lo que se pago. Sin criterio de
+ *  costeo impuesto: se guarda el precio de CADA compra y el negocio saca el
+ *  margen como quiera. Inventar un promedio ponderado seria decidir por ellos
+ *  algo que cambia todos los numeros de rentabilidad. */
+export async function registrarCompraAction(
+  formData: FormData,
+): Promise<ActionResult> {
+  try {
+    return await registrarOperacion("compra", formData);
   } catch (error) {
     return handleError(error);
   }
