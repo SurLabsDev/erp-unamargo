@@ -763,3 +763,107 @@ export async function registrarConteoAction(
     return handleError(error);
   }
 }
+
+const loteSchema = z.object({
+  tipo: z.enum(["entrada", "salida"]),
+  lineas: z
+    .array(
+      z.object({
+        productId: z.string().uuid(),
+        cantidad: z.number().int().positive(),
+      }),
+    )
+    .min(1, "No cargaste ningún producto."),
+  nota: z.string().trim().max(200).optional(),
+});
+
+/**
+ * Varios productos en un solo movimiento.
+ *
+ * Cuando llega un pedido del proveedor entran diez o quince articulos a la vez.
+ * Hacerlo de a uno por el menu de tres puntos son quince dialogos, y lo que
+ * pasa en la practica no es que lo hagan quince veces: es que no lo hacen, y el
+ * stock del sistema deja de parecerse al del deposito. Una funcion engorrosa no
+ * se usa mal, se deja de usar.
+ *
+ * Va todo en UNA transaccion por la misma razon que el conteo: la mitad de un
+ * pedido cargado es peor que ninguno, porque nadie sabe despues cual mitad fue.
+ *
+ * Esto NO toca la plata. Una entrada de mercaderia y su factura son dos cosas
+ * que ocurren en momentos distintos y muchas veces en montos distintos; la
+ * venta -que si mueve los dos libros- se registra desde Dinero.
+ */
+export async function registrarLoteAction(
+  tipo: "entrada" | "salida",
+  lineas: { productId: string; cantidad: number }[],
+  nota?: string,
+): Promise<ActionResult> {
+  try {
+    const user = await requireRole();
+    const parsed = loteSchema.safeParse({ tipo, lineas, nota });
+    if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
+    const input = parsed.data;
+
+    const result = await db.transaction(async (tx): Promise<ActionResult> => {
+      for (const linea of input.lineas) {
+        const delta =
+          input.tipo === "entrada" ? linea.cantidad : -linea.cantidad;
+
+        // Mismo update guardado que el movimiento de a uno: el WHERE impide
+        // que dos cargas simultaneas dejen el stock negativo.
+        const filas = (await tx.execute(sql`
+          update ${products}
+          set current_stock = current_stock + ${delta}, updated_at = now()
+          where id = ${linea.productId} and is_active
+            and current_stock + ${delta} >= 0
+          returning current_stock
+        `)) as unknown as Array<{ current_stock: number }>;
+
+        if (filas.length === 0) {
+          const [p] = await tx
+            .select({
+              name: products.name,
+              isActive: products.isActive,
+              currentStock: products.currentStock,
+            })
+            .from(products)
+            .where(eq(products.id, linea.productId))
+            .limit(1);
+          if (!p) return { ok: false, error: "Un producto ya no existe." };
+          if (!p.isActive)
+            return {
+              ok: false,
+              error: `"${p.name}" está inactivo: no admite movimientos.`,
+            };
+          return {
+            ok: false,
+            error: `No hay stock suficiente de "${p.name}": quedan ${p.currentStock} y querés sacar ${linea.cantidad}. No se registró nada.`,
+          };
+        }
+
+        await tx.insert(stockMovements).values({
+          productId: linea.productId,
+          type: input.tipo === "entrada" ? "in" : "out",
+          delta,
+          resultingStock: filas[0].current_stock,
+          note: input.nota?.trim() || null,
+          createdBy: user.id,
+        });
+      }
+
+      const n = input.lineas.length;
+      return {
+        ok: true,
+        message:
+          input.tipo === "entrada"
+            ? `Entrada registrada: ${n} ${n === 1 ? "producto" : "productos"}.`
+            : `Salida registrada: ${n} ${n === 1 ? "producto" : "productos"}.`,
+      };
+    });
+
+    if (result.ok) await revalidateStock();
+    return result;
+  } catch (error) {
+    return handleError(error);
+  }
+}

@@ -1,4 +1,4 @@
-import { ClipboardCheck, History } from "lucide-react";
+import { ArrowLeftRight, ClipboardCheck, History } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
@@ -26,6 +26,13 @@ export default async function StockPage() {
           description="Catálogo de productos y movimientos del depósito."
         />
         <div className="flex flex-wrap gap-2">
+          {/* Primero y en solido: es lo que mas se hace en el dia. */}
+          <Button asChild size="sm">
+            <Link href="/stock/movimiento">
+              <ArrowLeftRight className="size-4" />
+              Registrar movimiento
+            </Link>
+          </Button>
           <Button asChild variant="outline" size="sm">
             <Link href="/stock/conteo">
               <ClipboardCheck className="size-4" />
