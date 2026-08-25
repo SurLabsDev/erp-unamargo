@@ -281,3 +281,31 @@ export async function listClassificationOptions(): Promise<
       .map((s) => ({ id: s.id, name: s.name })),
   }));
 }
+
+/**
+ * Los productos vendibles, y nada mas: id, sku, nombre y precio.
+ *
+ * Existe porque la pantalla de Dinero usaba `listCatalog()` para llenar el
+ * selector de la venta, y esa consulta trae DOS subconsultas correlacionadas
+ * por producto -si tiene movimientos y cuantas fotos- que sirven en la tabla de
+ * Stock y no sirven para nada en un selector. Dinero terminaba pagando ~70
+ * subconsultas para mostrar una lista de nombres, y era la unica pantalla que
+ * seguia sin cargar cuando todas las demas ya iban rapido.
+ *
+ * Regla que vale mas alla de este caso: la consulta se elige por lo que la
+ * pantalla necesita, no por la que ya estaba escrita.
+ */
+export async function listProductosVendibles(): Promise<
+  { id: string; sku: string; name: string; price: string | null }[]
+> {
+  return db
+    .select({
+      id: products.id,
+      sku: products.sku,
+      name: products.name,
+      price: products.price,
+    })
+    .from(products)
+    .where(eq(products.isActive, true))
+    .orderBy(asc(products.sku));
+}
