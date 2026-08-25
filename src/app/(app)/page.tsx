@@ -366,7 +366,7 @@ export default async function PanelPage(props: PageProps<"/">) {
                     key={p.id}
                     className="flex items-baseline justify-between gap-3 text-sm"
                   >
-                    <Link
+                    <Link prefetch={false}
                       href={`/stock/${p.id}`}
                       className="truncate underline-offset-4 hover:underline"
                     >
@@ -413,7 +413,7 @@ export default async function PanelPage(props: PageProps<"/">) {
                     key={p.id}
                     className="flex items-baseline justify-between gap-3 text-sm"
                   >
-                    <Link
+                    <Link prefetch={false}
                       href={`/stock/${p.id}`}
                       className="truncate underline-offset-4 hover:underline"
                     >
@@ -529,7 +529,7 @@ export default async function PanelPage(props: PageProps<"/">) {
                     key={p.id}
                     className="flex items-center justify-between gap-3 text-sm"
                   >
-                    <Link
+                    <Link prefetch={false}
                       href={`/stock/${p.id}`}
                       className="truncate underline-offset-4 hover:underline"
                     >

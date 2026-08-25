@@ -98,7 +98,7 @@ export function CampaignsManager(props: { campaigns: CampaignListRow[] }) {
                 {campaigns.map((campaign) => (
                   <TableRow key={campaign.id}>
                     <TableCell>
-                      <Link
+                      <Link prefetch={false}
                         href={`/descuentos/${campaign.id}`}
                         className="font-medium underline-offset-4 hover:underline"
                       >
@@ -135,7 +135,7 @@ export function CampaignsManager(props: { campaigns: CampaignListRow[] }) {
                     </TableCell>
                     <TableCell className="cifras">
                       {campaign.targetCount === 0 ? (
-                        <Link
+                        <Link prefetch={false}
                           href={`/descuentos/${campaign.id}`}
                           className="text-destructive underline underline-offset-4"
                         >

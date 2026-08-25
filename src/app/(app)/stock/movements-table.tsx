@@ -56,7 +56,7 @@ export function MovementsTable(props: {
               </TableCell>
               {showProduct ? (
                 <TableCell>
-                  <Link
+                  <Link prefetch={false}
                     href={`/stock/${row.productId}`}
                     className="underline-offset-4 hover:underline"
                   >

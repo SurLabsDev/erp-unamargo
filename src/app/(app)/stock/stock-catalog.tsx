@@ -47,6 +47,23 @@ const features = tableFeatures({
 
 const columnHelper = createColumnHelper<typeof features, CatalogRow>();
 
+/* Los enlaces a la ficha de cada producto llevan `prefetch={false}`, y no es un
+ * detalle de rendimiento fino: es la diferencia entre que el ERP ande o no.
+ *
+ * Next precarga por defecto todo <Link> que entra en pantalla. Con 34 filas y
+ * dos enlaces por fila, ABRIR la lista disparaba 68 renders completos de la
+ * ficha de producto en el servidor, cada uno con sus propias consultas, todos
+ * en el mismo segundo. En los logs de Vercel se ve clarito: quince GET a
+ * /stock/<uuid> con el mismo timestamp, sin que nadie hubiera hecho clic.
+ *
+ * Eso no satura la base -el CPU estaba en 2%- pero llena el pool de conexiones
+ * al instante, y lo que se ve desde afuera es "la app se cuelga sola" en
+ * cualquier pantalla y al azar.
+ *
+ * REGLA: cualquier <Link> que se repita por fila va con `prefetch={false}`. El
+ * costo es que al hacer clic la ficha tarda lo que tarda; el beneficio es que
+ * mirar la lista no cuesta nada. */
+
 /** Que columna se esconde y a partir de que ancho.
  *  El orden de sacrificio va de lo menos a lo mas necesario para operar:
  *  primero el minimo (se ve en la ficha), despues las fotos (es un recordatorio,
@@ -104,7 +121,7 @@ export function StockCatalog(props: {
         columnHelper.accessor("sku", {
           header: "SKU",
           cell: (ctx) => (
-            <Link
+            <Link prefetch={false}
               href={`/stock/${ctx.row.original.id}`}
               title={ctx.row.original.sku}
               className="block max-w-[16ch] truncate font-mono text-xs font-medium underline-offset-4 hover:underline lg:max-w-[24ch]"
@@ -230,7 +247,7 @@ export function StockCatalog(props: {
                           lo mismo terminaban en dos formularios que no
                           coincidian. */}
                       <DropdownMenuItem asChild>
-                        <Link href={`/stock/${product.id}`}>Editar</Link>
+                        <Link prefetch={false} href={`/stock/${product.id}`}>Editar</Link>
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
