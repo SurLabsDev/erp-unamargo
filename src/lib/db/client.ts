@@ -38,7 +38,27 @@ const globalForDb = globalThis as unknown as {
   pgClient?: ReturnType<typeof postgres>;
 };
 
-const client = globalForDb.pgClient ?? postgres(url, { prepare: false, max: 5 });
+const client = globalForDb.pgClient ?? postgres(url, {
+    prepare: false,
+    max: 5,
+    // Cada conexion se jubila al minuto. Es LO UNICO que corta las sesiones
+    // trabadas, y vale la pena entender por que:
+    //
+    // Cuando Vercel congela una funcion con una consulta en vuelo, la sesion
+    // del otro lado queda en `active` + `ClientRead`, o sea Postgres esperando
+    // datos de un cliente que ya no existe. Esa sesion ocupa lugar en el pool y
+    // NINGUN timeout de la base la mata:
+    //   - `statement_timeout` cuenta solo el tiempo EJECUTANDO, y ahi no
+    //     ejecuta, espera.
+    //   - `idle_in_transaction_session_timeout` aplica a `idle in transaction`,
+    //     no a `active`.
+    //   - los keepalives TCP no disparan porque, para Postgres, el cliente es
+    //     el pooler de Supabase, que esta vivo; el que murio esta del otro lado.
+    //
+    // Se probo cada una de esas tres y ninguna sirvio. Jubilar la conexion por
+    // tiempo la cierra desde nuestro lado, que es el unico lado que puede.
+    max_lifetime: 60,
+  });
 if (process.env.NODE_ENV !== "production") globalForDb.pgClient = client;
 
 export const db = drizzle(client, { schema });
