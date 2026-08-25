@@ -29,6 +29,8 @@ import { todayInTimeZone } from "@/lib/format";
 import { getSettings } from "@/lib/settings";
 import { avisarALaWeb } from "@/lib/avisar-web";
 import { ETIQUETA_PANEL } from "../panel-cache";
+import { ETIQUETA_SETTINGS } from "@/lib/settings";
+import { ETIQUETA_USUARIOS } from "@/lib/auth-helpers";
 
 export type ActionResult =
   | { ok: true; message: string; password?: string }
@@ -49,6 +51,12 @@ function revalidateConfig() {
   revalidatePath("/configuracion");
   revalidatePath("/dinero");
   revalidatePath("/");
+  // La configuracion se lee cacheada en todas las pantallas: sin limpiar la
+  // etiqueta, cambiar la moneda o la zona horaria no se veria en ningun lado.
+  updateTag(ETIQUETA_SETTINGS);
+  updateTag(ETIQUETA_PANEL);
+  // Dar de baja a alguien tiene que sacarlo YA, no en 15 segundos.
+  updateTag(ETIQUETA_USUARIOS);
 }
 
 /** Revalida las pantallas del ERP y, ademas, le avisa a la web publica.

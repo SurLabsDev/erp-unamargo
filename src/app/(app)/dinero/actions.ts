@@ -22,6 +22,7 @@ import {
 } from "@/lib/domain/money";
 import { todayInTimeZone } from "@/lib/format";
 import { ETIQUETA_PANEL } from "../panel-cache";
+import { ETIQUETA_SETTINGS } from "@/lib/settings";
 import { avisarALaWeb } from "@/lib/avisar-web";
 
 export type ActionResult =
@@ -39,6 +40,7 @@ function handleError(error: unknown): ActionResult {
 }
 
 function revalidateCash() {
+  updateTag(ETIQUETA_SETTINGS);
   revalidatePath("/dinero");
   revalidatePath("/");
   // El panel lee cacheado: sin esto seguiria mostrando las cifras de antes
