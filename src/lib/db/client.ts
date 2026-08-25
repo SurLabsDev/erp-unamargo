@@ -18,25 +18,29 @@ if (!process.env.DATABASE_URL && process.env.NODE_ENV === "production") {
 
 // `prepare: false` is required for transaction-mode poolers (pgbouncer).
 //
-// HIPOTESIS PROBADA Y DESCARTADA (2026-08-24): se probo `max: 3` con
-// `idle_timeout: 20`, `max_lifetime` y `connect_timeout: 10` creyendo que el
-// ERP se quedaba sin conexiones. NO era eso -la base tenia 8 de 60 conexiones
-// en uso y cero locks trabados- y ademas la version con esos parametros dejo el
-// ambiente de prueba PEOR: la API paso de 0.44s a errores 500 y cuelgues. La
-// sospecha es que cerrar conexiones por tiempo contra un pooler en modo
-// transaccion deja sesiones trabadas del lado del servidor. No volver a
-// intentarlo sin medir antes y despues.
+// `max: 1` NO es una restriccion arbitraria: es lo que corresponde en
+// serverless. Cada invocacion atiende un pedido, asi que las conexiones de mas
+// no aceleran nada y en cambio multiplican por cinco lo que cada instancia le
+// saca al pooler. Cuando el pool del pooler se llena, las consultas hacen cola
+// hasta morir por `statement_timeout`, y desde afuera se ve como que "la app se
+// cuelga sola": cualquier pantalla, al azar, y peor cuanto mas se usa.
 //
-// El sintoma real a investigar es otro: aparecen sesiones en estado `active` +
-// `ClientRead` que duran minutos, o sea Postgres esperando datos de un cliente
-// serverless que ya murio. Se ven con:
-//   select pid, state, wait_event, now()-xact_start, query from pg_stat_activity;
+// Las pantallas que disparan varias consultas en paralelo (el panel manda diez)
+// ahora las hacen de a una sobre la misma conexion. A ~100ms cada una eso suma
+// alrededor de un segundo, que es plata bien gastada para que la pantalla
+// cargue SIEMPRE en vez de casi siempre.
+//
+// Historia, para no repetirla: un intento anterior puso `max: 3` junto con
+// `idle_timeout`, `max_lifetime` y `connect_timeout` todos a la vez, y quedo
+// PEOR. Se revirtio en bloque. El culpable era casi seguro cerrar conexiones
+// por tiempo contra un pooler en modo transaccion, no el `max`. Si hay que
+// tocar esto, un parametro por vez y midiendo.
 // Singleton via globalThis so dev HMR does not leak connections.
 const globalForDb = globalThis as unknown as {
   pgClient?: ReturnType<typeof postgres>;
 };
 
-const client = globalForDb.pgClient ?? postgres(url, { prepare: false, max: 5 });
+const client = globalForDb.pgClient ?? postgres(url, { prepare: false, max: 1 });
 if (process.env.NODE_ENV !== "production") globalForDb.pgClient = client;
 
 export const db = drizzle(client, { schema });
