@@ -72,14 +72,26 @@ export default async function DineroPage(props: PageProps<"/dinero">) {
     page: parsePageParam(searchParams.page),
   };
 
-  const [totals, breakdown, movements, categories, productos] =
-    await Promise.all([
-      periodTotals(period),
-      categoryBreakdown(period),
-      listCashMovements(period, filters),
-      listCategories(),
-      listProductosVendibles(),
-    ]);
+  // Se piden en DOS tandas y no las cinco juntas, a proposito.
+  //
+  // El pool tiene 5 conexiones. Pedir cinco consultas a la vez significa
+  // necesitarlas TODAS al mismo tiempo, y si una quedo tomada por un pedido que
+  // murio, la quinta espera una conexion que no se libera nunca: `postgres.js`
+  // no tiene limite de espera en la cola. Eso es exactamente lo que se veia:
+  // Dinero devolvia 200 -las cabeceras salen enseguida- y despues el cuerpo no
+  // terminaba jamas, sin un solo error en los logs.
+  //
+  // Con tandas de tres y dos, la pantalla nunca necesita mas de tres conexiones
+  // libres. Cuesta una ida y vuelta extra, del orden de 100ms.
+  const [totals, breakdown, movements] = await Promise.all([
+    periodTotals(period),
+    categoryBreakdown(period),
+    listCashMovements(period, filters),
+  ]);
+  const [categories, productos] = await Promise.all([
+    listCategories(),
+    listProductosVendibles(),
+  ]);
   const summary = computePeriodSummary(settings.initialBalance, totals);
   const currency = settings.currencyCode;
 
