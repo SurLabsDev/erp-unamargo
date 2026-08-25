@@ -1,4 +1,4 @@
-import { History } from "lucide-react";
+import { ClipboardCheck, History } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
@@ -25,12 +25,20 @@ export default async function StockPage() {
           title="Stock"
           description="Catálogo de productos y movimientos del depósito."
         />
-        <Button asChild variant="outline" size="sm">
-          <Link href="/stock/movimientos">
-            <History className="size-4" />
-            Historial de movimientos
-          </Link>
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline" size="sm">
+            <Link href="/stock/conteo">
+              <ClipboardCheck className="size-4" />
+              Contar stock
+            </Link>
+          </Button>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/stock/movimientos">
+              <History className="size-4" />
+              Historial de movimientos
+            </Link>
+          </Button>
+        </div>
       </div>
       <StockCatalog
         rows={rows}

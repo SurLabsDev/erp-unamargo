@@ -667,3 +667,99 @@ export async function updateProductContentAction(
     return handleError(error);
   }
 }
+
+const conteoSchema = z.object({
+  conteos: z
+    .array(
+      z.object({
+        productId: z.string().uuid(),
+        contado: z.number().int().min(0),
+      }),
+    )
+    .min(1, "No contaste ningún producto."),
+  nota: z.string().trim().max(200).optional(),
+});
+
+/**
+ * Conteo de stock: se cuenta lo que hay y el sistema anota la diferencia.
+ *
+ * Cada producto contado genera un ajuste con su delta, todo en UNA transaccion:
+ * un conteo a medias es peor que ninguno, porque deja el deposito con la mitad
+ * de los numeros de ayer y la mitad de los de hoy, y nadie sabe cual es cual.
+ *
+ * Lo que se omite NO se toca. Es la diferencia entre esto y un inventario
+ * completo: se puede contar el estante de mates un martes y el de bombillas el
+ * jueves, sin que lo no contado quede en cero.
+ *
+ * Los productos que dan igual tampoco generan movimiento: un ajuste de delta
+ * cero ensucia el historial sin decir nada.
+ */
+export async function registrarConteoAction(
+  entradas: { productId: string; contado: number }[],
+  nota?: string,
+): Promise<ActionResult> {
+  try {
+    const user = await requireRole();
+    const parsed = conteoSchema.safeParse({ conteos: entradas, nota });
+    if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
+    const input = parsed.data;
+
+    const result = await db.transaction(async (tx): Promise<ActionResult> => {
+      let ajustados = 0;
+      let sinCambio = 0;
+
+      for (const fila of input.conteos) {
+        const [product] = await tx
+          .select({ currentStock: products.currentStock, name: products.name })
+          .from(products)
+          .where(
+            and(eq(products.id, fila.productId), eq(products.isActive, true)),
+          )
+          .limit(1)
+          .for("update");
+        if (!product) {
+          return {
+            ok: false,
+            error: "Un producto del conteo ya no existe o fue desactivado.",
+          };
+        }
+
+        const delta = fila.contado - product.currentStock;
+        if (delta === 0) {
+          sinCambio += 1;
+          continue;
+        }
+
+        await tx
+          .update(products)
+          .set({ currentStock: fila.contado, updatedAt: new Date() })
+          .where(eq(products.id, fila.productId));
+
+        await tx.insert(stockMovements).values({
+          productId: fila.productId,
+          type: "adjustment",
+          delta,
+          resultingStock: fila.contado,
+          note: input.nota?.trim()
+            ? `Conteo: ${input.nota.trim()}`
+            : "Conteo de stock",
+          createdBy: user.id,
+        });
+        ajustados += 1;
+      }
+
+      return {
+        ok: true,
+        message:
+          ajustados === 0
+            ? `Conteo cerrado: los ${sinCambio} productos contados coincidían.`
+            : `Conteo cerrado: ${ajustados} ${ajustados === 1 ? "producto ajustado" : "productos ajustados"}, ${sinCambio} sin cambios.`,
+      };
+    });
+
+    if (result.ok) await revalidateStock();
+    return result;
+  } catch (error) {
+    return handleError(error);
+  }
+}
