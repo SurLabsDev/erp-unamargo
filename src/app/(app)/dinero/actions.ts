@@ -28,11 +28,39 @@ import { avisarALaWeb } from "@/lib/avisar-web";
 export type ActionResult =
   { ok: true; message: string } | { ok: false; error: string };
 
+/** Una linea de la boleta, ya resuelta: nombre y precio como quedaron
+ *  guardados, no como estaban en el formulario. */
+export type LineaBoleta = {
+  nombre: string;
+  sku: string;
+  cantidad: number;
+  precio: string;
+};
+
+/**
+ * Lo que hace falta para imprimir la boleta.
+ *
+ * Se devuelve desde la accion y no se arma con el estado del formulario a
+ * proposito: la boleta tiene que decir lo que quedo REGISTRADO. Si el precio
+ * se ajusto, si una linea no entro, si el numero de movimiento es otro, el
+ * papel que se lleva el cliente tiene que coincidir con el libro.
+ */
+export type Boleta = {
+  numero: number;
+  fecha: string;
+  lineas: LineaBoleta[];
+  total: string;
+};
+
+export type ResultadoVenta =
+  | { ok: true; message: string; boleta: Boleta }
+  | { ok: false; error: string };
+
 function firstIssue(error: z.ZodError): string {
   return error.issues[0]?.message ?? "Datos inválidos.";
 }
 
-function handleError(error: unknown): ActionResult {
+function handleError(error: unknown): { ok: false; error: string } {
   if (error instanceof ForbiddenError)
     return { ok: false, error: error.message };
   console.error("[dinero:action]", error);
@@ -181,7 +209,7 @@ const operacionSchema = z.object({
 async function registrarOperacion(
   tipo: "venta" | "compra",
   formData: FormData,
-): Promise<ActionResult> {
+): Promise<ResultadoVenta> {
   const user = await requireRole();
   let lineasCrudas: unknown;
   try {
@@ -200,7 +228,7 @@ async function registrarOperacion(
 
   const campanas = tipo === "venta" ? await listCampaignsWithTargets() : [];
 
-  const result = await db.transaction(async (tx): Promise<ActionResult> => {
+  const result = await db.transaction(async (tx): Promise<ResultadoVenta> => {
     await tx.execute(sql`select pg_advisory_xact_lock_shared(${BALANCE_LOCK})`);
     const [instance] = await tx.select().from(settings).limit(1);
     if (!instance)
@@ -233,6 +261,7 @@ async function registrarOperacion(
 
     let total = 0;
     const nombres: string[] = [];
+    const lineasBoleta: LineaBoleta[] = [];
 
     for (const linea of input.lineas) {
       const delta = tipo === "venta" ? -linea.cantidad : linea.cantidad;
@@ -242,8 +271,12 @@ async function registrarOperacion(
         set current_stock = current_stock + ${delta}, updated_at = now()
         where id = ${linea.productId} and is_active
           and current_stock + ${delta} >= 0
-        returning current_stock, name
-      `)) as unknown as Array<{ current_stock: number; name: string }>;
+        returning current_stock, name, sku
+      `)) as unknown as Array<{
+        current_stock: number;
+        name: string;
+        sku: string;
+      }>;
 
       if (filas.length === 0) {
         const [p] = await tx
@@ -297,23 +330,41 @@ async function registrarOperacion(
 
       total += Number(linea.precio) * linea.cantidad;
       nombres.push(`${linea.cantidad} x ${filas[0].name}`);
+      lineasBoleta.push({
+        nombre: filas[0].name,
+        sku: filas[0].sku,
+        cantidad: linea.cantidad,
+        precio: linea.precio,
+      });
     }
 
-    await tx.insert(cashMovements).values({
-      date: input.date,
-      kind: tipo === "venta" ? "income" : "expense",
-      categoryId: input.categoryId,
-      concept:
-        input.nota?.trim() ||
-        `${tipo === "venta" ? "Venta" : "Compra"}: ${nombres.join(", ").slice(0, 180)}`,
-      amount: total.toFixed(2),
-      createdBy: user.id,
-    });
+    // El id del movimiento de caja ES el numero de boleta. No se inventa un
+    // contador aparte: asi el papel que se lleva el cliente se puede buscar en
+    // el libro de Dinero sin traducir nada.
+    const [movimiento] = await tx
+      .insert(cashMovements)
+      .values({
+        date: input.date,
+        kind: tipo === "venta" ? "income" : "expense",
+        categoryId: input.categoryId,
+        concept:
+          input.nota?.trim() ||
+          `${tipo === "venta" ? "Venta" : "Compra"}: ${nombres.join(", ").slice(0, 180)}`,
+        amount: total.toFixed(2),
+        createdBy: user.id,
+      })
+      .returning({ id: cashMovements.id });
 
     const n = input.lineas.length;
     return {
       ok: true,
       message: `${tipo === "venta" ? "Venta" : "Compra"} registrada: ${n} ${n === 1 ? "producto" : "productos"}. Stock y caja actualizados.`,
+      boleta: {
+        numero: movimiento.id,
+        fecha: input.date,
+        lineas: lineasBoleta,
+        total: total.toFixed(2),
+      },
     };
   });
 
@@ -329,7 +380,7 @@ async function registrarOperacion(
 
 export async function registerSaleAction(
   formData: FormData,
-): Promise<ActionResult> {
+): Promise<ResultadoVenta> {
   try {
     return await registrarOperacion("venta", formData);
   } catch (error) {
@@ -345,7 +396,9 @@ export async function registrarCompraAction(
   formData: FormData,
 ): Promise<ActionResult> {
   try {
-    return await registrarOperacion("compra", formData);
+    const r = await registrarOperacion("compra", formData);
+    // La compra no imprime boleta: se descarta la parte que no le sirve.
+    return r.ok ? { ok: true, message: r.message } : r;
   } catch (error) {
     return handleError(error);
   }

@@ -140,6 +140,8 @@ export default async function DineroPage(props: PageProps<"/dinero">) {
           </Button>
           <NewCashMovementButton
             productos={productos}
+            moneda={currency}
+            empresa={settings.companyName}
             categories={categories
               .filter((c) => c.isActive)
               .map(({ id, name, kind }) => ({ id, name, kind }))}

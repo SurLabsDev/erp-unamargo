@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus } from "lucide-react";
+import { Plus, Printer } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,9 @@ import {
   createCashMovementAction,
   registerSaleAction,
   registrarCompraAction,
+  type Boleta as DatosBoleta,
 } from "./actions";
+import { Boleta } from "./boleta";
 
 type CategoryOption = { id: string; name: string; kind: "income" | "expense" };
 export type ProductoVendible = {
@@ -33,6 +35,8 @@ export function NewCashMovementButton(props: {
   productos: ProductoVendible[];
   todayISO: string;
   minDateISO: string;
+  moneda: string;
+  empresa: string;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -57,9 +61,12 @@ function CashMovementForm(props: {
   productos: ProductoVendible[];
   todayISO: string;
   minDateISO: string;
+  moneda: string;
+  empresa: string;
   onClose: () => void;
 }) {
-  const { categories, productos, todayISO, minDateISO, onClose } = props;
+  const { categories, productos, todayISO, minDateISO, moneda, empresa, onClose } =
+    props;
   // Un paso a la vez. El formulario de antes pedia cinco decisiones juntas
   // -tipo, fecha, categoria, concepto y monto- y la mas facil de todas, si es
   // plata que entra o que sale, estaba escondida en un desplegable.
@@ -78,6 +85,9 @@ function CashMovementForm(props: {
   >([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Cuando hay boleta, la venta YA se guardo: el dialogo deja de ser un
+   *  formulario y pasa a ser el comprobante. */
+  const [boleta, setBoleta] = useState<DatosBoleta | null>(null);
 
   const kindCategories = categories.filter((c) => c.kind === kind);
   const categoriaElegida = categories.find((c) => c.id === categoryId);
@@ -155,12 +165,47 @@ function CashMovementForm(props: {
       result = await createCashMovementAction(formData);
     }
     setSubmitting(false);
-    if (result.ok) {
-      toast.success(result.message);
-      onClose();
-    } else {
+    if (!result.ok) {
       setError(result.error);
+      return;
     }
+    toast.success(result.message);
+    // Una venta termina en la boleta, no cerrando el dialogo: si se cierra
+    // solo, imprimirla despues obliga a buscar el movimiento en la tabla.
+    // Solo la venta trae boleta; la compra y el movimiento suelto no.
+    const conBoleta = result as { boleta?: DatosBoleta };
+    if (conBoleta.boleta) setBoleta(conBoleta.boleta);
+    else onClose();
+  }
+
+  // --- Venta ya registrada: el dialogo pasa a ser el comprobante ----------
+  if (boleta) {
+    return (
+      <>
+        <DialogHeader>
+          <DialogTitle>Venta registrada</DialogTitle>
+          <DialogDescription>
+            Boleta N° {boleta.numero}. Así va a salir impresa.
+          </DialogDescription>
+        </DialogHeader>
+
+        {/* Se ve al mismo ancho que el papel (72mm) para que quien cobra sepa
+            que va a salir antes de gastar el rollo. */}
+        <div className="max-h-[52vh] overflow-y-auto rounded-md border bg-white p-3">
+          <Boleta datos={boleta} empresa={empresa} moneda={moneda} />
+        </div>
+
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>
+            Listo
+          </Button>
+          <Button type="button" onClick={() => window.print()}>
+            <Printer className="size-4" />
+            Imprimir boleta
+          </Button>
+        </DialogFooter>
+      </>
+    );
   }
 
   return (
