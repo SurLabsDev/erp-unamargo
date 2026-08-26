@@ -179,55 +179,40 @@ function codigoDeBarras(valor: string): string {
 
 // --- El documento ----------------------------------------------------------
 
-function estilos(altoMm: number): string {
+/**
+ * El CSS del ticket, con TODO colgando de `.ticket`.
+ *
+ * `pre` es lo que va adelante: vacio para el documento suelto de la vista
+ * previa, y `.impresion-ticket ` para la copia que se incrusta en la pagina del
+ * ERP. Una sola fuente de estilos para las dos, porque tener dos era el pecado
+ * original de esto: el que se veia estaba bien y el que salia no.
+ *
+ * Nada toca `html` ni `body`: eso es lo que permite incrustarlo sin pisarle el
+ * layout al ERP.
+ */
+function cssTicket(pre: string): string {
   return `
-:root {
-  --paper-width: 80mm;
-  --safe-margin: 7mm;
-  --ink: #000;
-  --paper: #fff;
-}
+${pre}.ticket, ${pre}.ticket * { box-sizing: border-box; }
 
-/* El alto del papel se escribe ACA, en la fuente del documento, y no se
-   inyecta despues de cargar. Esa diferencia es la que hizo que saliera un
-   metro de papel en blanco: al imprimir un iframe, Chrome vuelve a leer el
-   \`srcdoc\`, asi que cualquier <style> agregado al DOM vivo se pierde. Se
-   notaba en el papel: salio el encabezado del navegador, que solo aparece si
-   \`margin: 0\` NO se aplico.
-   Y no se puede escribir \`size: 80mm auto\`: mezclar una medida con \`auto\` no
-   es sintaxis valida, el navegador descarta la regla entera y cae en tamaño
-   carta. */
-@page { size: 80mm ${altoMm}mm; margin: 0; }
-
-* { box-sizing: border-box; }
-
-html, body {
-  width: var(--paper-width);
+${pre}.ticket {
+  width: 80mm;
+  padding: 7.5mm 7mm 10mm;
   margin: 0;
-  padding: 0;
-  color: var(--ink);
-  background: var(--paper);
+  color: #000;
+  background: #fff;
   font-family: Arial, Helvetica, sans-serif;
+  font-size: 8pt;
+  line-height: 1.2;
+  overflow: hidden;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
 }
 
-body { font-size: 8pt; line-height: 1.2; }
+${pre}.ticket .brand { display: flex; align-items: center; gap: 2.5mm; margin: 0 0 7mm; }
+${pre}.ticket .brand__mark { display: block; width: 8.6mm; height: auto; flex: 0 0 auto; }
+${pre}.ticket .brand__name { font-size: 11.2pt; font-weight: 700; line-height: 1; }
 
-/* El template traia \`min-height: 250mm\`. Se saca: con el minimo puesto, medir
-   el ticket devuelve siempre 250mm y cada venta tira 25cm de rollo, la mayoria
-   en blanco. Sin el, el papel mide lo que mide el ticket. */
-.ticket {
-  width: var(--paper-width);
-  padding: 7.5mm var(--safe-margin) 10mm;
-  overflow: hidden;
-}
-
-.brand { display: flex; align-items: center; gap: 2.5mm; margin-bottom: 7mm; }
-.brand__mark { display: block; width: 8.6mm; height: auto; flex: 0 0 auto; }
-.brand__name { font-size: 11.2pt; font-weight: 700; line-height: 1; }
-
-.eyebrow {
+${pre}.ticket .eyebrow {
   margin: 0;
   font-size: 6.1pt;
   font-weight: 700;
@@ -235,7 +220,7 @@ body { font-size: 8pt; line-height: 1.2; }
   text-transform: uppercase;
 }
 
-.hero {
+${pre}.ticket .hero {
   margin: 3.4mm 0 5mm;
   font-size: 21.5pt;
   font-weight: 700;
@@ -243,44 +228,42 @@ body { font-size: 8pt; line-height: 1.2; }
   letter-spacing: -0.2pt;
 }
 
-.intro { margin: 0 0 6mm; font-size: 7.4pt; line-height: 1.3; }
+${pre}.ticket .intro { margin: 0 0 6mm; font-size: 7.4pt; line-height: 1.3; }
 
-.rule { height: 0; margin: 0; border: 0; border-top: 0.25mm solid var(--ink); }
+${pre}.ticket .rule { height: 0; margin: 0; border: 0; border-top: 0.25mm solid #000; }
 
-.meta {
+${pre}.ticket .meta {
   display: grid;
   grid-template-columns: 1fr 1fr;
   column-gap: 5mm;
   row-gap: 2mm;
   margin: 5mm 0 2.5mm;
 }
-.meta__value { margin-top: 1mm; font-size: 8.7pt; font-weight: 700; }
-.meta__detail { grid-column: 1 / -1; font-size: 6.8pt; white-space: nowrap; }
+${pre}.ticket .meta__value { margin-top: 1mm; font-size: 8.7pt; font-weight: 700; }
+${pre}.ticket .meta__detail { grid-column: 1 / -1; font-size: 6.8pt; white-space: nowrap; }
 
-.items { margin-top: 6mm; }
-.items__heading { margin-bottom: 4.3mm; }
+${pre}.ticket .items { margin-top: 6mm; }
+${pre}.ticket .items__heading { margin-bottom: 4.3mm; }
 
-.item {
+${pre}.ticket .item {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   column-gap: 3mm;
   margin-bottom: 4.3mm;
   break-inside: avoid;
 }
-.item__name, .item__amount {
-  font-size: 8.6pt;
-  font-weight: 700;
-  line-height: 1.15;
-}
-.item__amount { white-space: nowrap; text-align: right; }
-.item__detail { grid-column: 1 / -1; margin-top: 1.2mm; font-size: 6.8pt; }
+${pre}.ticket .item__name,
+${pre}.ticket .item__amount { font-size: 8.6pt; font-weight: 700; line-height: 1.15; }
+${pre}.ticket .item__amount { white-space: nowrap; text-align: right; }
+${pre}.ticket .item__detail { grid-column: 1 / -1; margin-top: 1.2mm; font-size: 6.8pt; }
 
-.summary {
+${pre}.ticket .summary {
   margin-top: 1.5mm;
   padding-top: 3.4mm;
-  border-top: 0.25mm solid var(--ink);
+  border-top: 0.25mm solid #000;
 }
-.summary__row, .payment__row {
+${pre}.ticket .summary__row,
+${pre}.ticket .payment__row {
   display: flex;
   justify-content: space-between;
   gap: 4mm;
@@ -288,98 +271,70 @@ body { font-size: 8pt; line-height: 1.2; }
   font-size: 7.5pt;
 }
 
-.total {
+${pre}.ticket .total {
   display: flex;
   align-items: center;
   justify-content: space-between;
   min-height: 12mm;
   margin: 5.2mm 0 4.7mm;
   padding: 2.5mm 4mm;
-  color: var(--paper);
-  background: var(--ink);
+  color: #fff;
+  background: #000;
   border-radius: 8mm;
   break-inside: avoid;
+  /* Chrome trae "Graficos de fondo" APAGADO por defecto, y sin esto la pildora
+     saldria como texto blanco sobre papel blanco: el total, invisible. */
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
 }
-.total__label { font-size: 10.8pt; font-weight: 700; }
-.total__amount { font-size: 13.5pt; font-weight: 700; white-space: nowrap; }
+${pre}.ticket .total__label { font-size: 10.8pt; font-weight: 700; }
+${pre}.ticket .total__amount { font-size: 13.5pt; font-weight: 700; white-space: nowrap; }
 
-.payment__row--strong { font-size: 8.2pt; font-weight: 700; }
+${pre}.ticket .payment__row--strong { font-size: 8.2pt; font-weight: 700; }
 
-.disclaimer {
+${pre}.ticket .disclaimer {
   margin: 6mm 0 5.5mm;
   padding: 2.2mm 3mm;
-  border: 0.25mm solid var(--ink);
+  border: 0.25mm solid #000;
   border-radius: 5mm;
   text-align: center;
   break-inside: avoid;
 }
-.disclaimer__title { font-size: 6.7pt; font-weight: 700; }
-.disclaimer__subtitle { margin-top: 0.8mm; font-size: 6.4pt; }
+${pre}.ticket .disclaimer__title { font-size: 6.7pt; font-weight: 700; }
+${pre}.ticket .disclaimer__subtitle { margin-top: 0.8mm; font-size: 6.4pt; }
 
-.barcode { margin: 0 auto 5.5mm; text-align: center; break-inside: avoid; }
-.barcode svg { display: block; width: 56mm; height: 9mm; margin: 0 auto 1.5mm; }
-.barcode__text {
+${pre}.ticket .barcode { margin: 0 auto 5.5mm; text-align: center; break-inside: avoid; }
+${pre}.ticket .barcode svg { display: block; width: 56mm; height: 9mm; margin: 0 auto 1.5mm; }
+${pre}.ticket .barcode__text {
   font-family: Consolas, "Courier New", monospace;
   font-size: 5.8pt;
   white-space: nowrap;
 }
 
-.footer { padding-top: 4.8mm; border-top: 0.25mm solid var(--ink); }
-.footer__thanks { margin: 0 0 2.5mm; font-size: 8.6pt; font-weight: 700; }
-.footer__line { margin: 0 0 1.5mm; font-size: 6.8pt; }
-
-@media print {
-  html, body { width: 80mm; }
-  /* El template traia \`.ticket { break-after: page }\`, para el caso de varios
-     tickets en un mismo documento. Aca se imprime uno solo y un salto despues
-     del ultimo contenido es justamente lo que agrega una hoja en blanco. */
-}
+${pre}.ticket .footer { padding-top: 4.8mm; border-top: 0.25mm solid #000; }
+${pre}.ticket .footer__thanks { margin: 0 0 2.5mm; font-size: 8.6pt; font-weight: 700; }
+${pre}.ticket .footer__line { margin: 0 0 1.5mm; font-size: 6.8pt; }
 `;
 }
 
 /**
- * El script que se imprime a si mismo. Va SOLO en la copia que se manda a la
- * impresora, nunca en la vista previa -una vista previa que llama a print() al
- * cargar abre el dialogo de impresion sola-.
+ * Los estilos de la copia que se incrusta en la pagina del ERP para imprimir.
  *
- * Mide y corrige el alto antes de imprimir. El valor bueno ya viene escrito en
- * el `@page` de la fuente; esto es por si el documento se abre en una maquina
- * que renderiza distinto. Va en la fuente y no inyectado desde afuera
- * justamente porque lo inyectado se pierde.
+ * No trae `@page` ni reglas de `html`/`body`: de eso se encarga el bloque de
+ * impresion de `globals.css`, que es el que tiene que apagar el resto del ERP.
  */
-const AUTOIMPRESION = `
-(function () {
-  window.addEventListener("load", function () {
-    var t = document.querySelector(".ticket");
-    if (t) {
-      var mm = Math.ceil(t.getBoundingClientRect().height / (96 / 25.4)) + 2;
-      var s = document.createElement("style");
-      s.textContent = "@page { size: 80mm " + mm + "mm; margin: 0; }";
-      document.head.appendChild(s);
-    }
-    setTimeout(function () { window.print(); }, 60);
-  });
-  // Se cierra sola cuando termina, asi no queda una pestaña por venta.
-  window.addEventListener("afterprint", function () {
-    setTimeout(function () { window.close(); }, 400);
-  });
-}());`;
+export function estilosIncrustados(): string {
+  return cssTicket(".impresion-ticket ");
+}
 
 /**
- * El documento completo del ticket.
+ * El cuerpo del ticket: `<main class="ticket">`, sin documento alrededor.
  *
- * Devuelve HTML como string y no JSX porque el destino no es el arbol de React
- * sino un documento aparte: la vista previa lo recibe por `srcdoc` y la copia
- * que se imprime es una pestaña propia hecha con un blob.
- *
- * `altoMm` es el largo del papel. Se escribe en la FUENTE del documento: ver el
- * comentario del `@page`. `autoimprimir` agrega el script que llama a print()
- * solo, y va unicamente en la copia que se imprime.
+ * Lo usan los dos destinos -la vista previa, que lo mete en un documento
+ * suelto, y la copia que se imprime, que lo incrusta en la pagina del ERP- para
+ * que sea imposible que difieran.
  */
-export function documentoTicket(
-  d: DatosTicket,
-  opciones: { altoMm?: number; autoimprimir?: boolean } = {},
-): string {
+export function cuerpoTicket(d: DatosTicket): string {
   const items = d.items.map((i) => ({
     nombre: i.nombre,
     cantidad: i.cantidad,
@@ -444,15 +399,7 @@ export function documentoTicket(
       </section>`
     : "";
 
-  return `<!doctype html>
-<html lang="es">
-<head>
-<meta charset="utf-8">
-<title>${esc(d.tipo)} ${esc(d.numero)}</title>
-<style>${estilos(opciones.altoMm ?? 250)}</style>
-</head>
-<body>
-<main class="ticket">
+  return `<main class="ticket">
   <header class="brand">
     ${MARCA.logo}
     <div class="brand__name">${esc(d.empresa)}</div>
@@ -497,8 +444,30 @@ export function documentoTicket(
     <p class="footer__line">${esc(`${MARCA.instagram}  ·  ${MARCA.telefono}`)}</p>
     <p class="footer__line">${esc(MARCA.lugar)}</p>
   </footer>
-</main>
-${opciones.autoimprimir ? `<script>${AUTOIMPRESION}</script>` : ""}
+</main>`;
+}
+
+/**
+ * El ticket como documento suelto, para la vista previa.
+ *
+ * Solo aca aparecen las reglas de `html`/`body` y el `@page`: el papel mide
+ * 80mm y el documento tambien. La copia que se imprime NO usa esto -se incrusta
+ * en la pagina del ERP y el papel lo define `globals.css`-.
+ */
+export function documentoTicket(d: DatosTicket): string {
+  return `<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>${esc(d.tipo)} ${esc(d.numero)}</title>
+<style>
+@page { size: 80mm 250mm; margin: 0; }
+html, body { width: 80mm; margin: 0; padding: 0; background: #fff; }
+${cssTicket("")}
+</style>
+</head>
+<body>
+${cuerpoTicket(d)}
 </body>
 </html>`;
 }

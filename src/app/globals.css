@@ -195,10 +195,63 @@
   }
 }
 
-/* La boleta de la impresora de tickets NO vive aca.
-   Es un documento aparte, con su propio CSS, dentro de un iframe: ver
-   `src/app/(app)/dinero/ticket-80mm.ts`. Tener las reglas de impresion en este
-   archivo era el bug: una hoja impresa arrastra el CSS de la pagina que la
-   contiene, y el <body> del ERP es `flex min-h-full flex-col`, asi que el
-   ticket salia estirado y centrado en la hoja por mas que se escondiera todo
-   lo demas. */
+/* ===== IMPRESION DEL TICKET ==============================================
+   El ticket se imprime imprimiendo ESTA pagina, con el ticket como unico
+   contenido encendido. Su diseño y su CSS viven en
+   `src/app/(app)/dinero/ticket-80mm.ts`; aca esta solo lo que hay que APAGAR.
+
+   Lo que sigue se aprendio en papel, en tres intentos:
+
+   1. `display: none` y NO `visibility: hidden` para esconder lo demas.
+      `visibility` esconde pero DEJA EL ELEMENTO OCUPANDO SU LUGAR, asi que la
+      tabla de Dinero seguia midiendo lo que mide y salian metros de papel en
+      blanco.
+
+   2. Hay que RESETEAR `body`, no solo esconder a sus hijos. El <body> del ERP
+      es `flex min-h-full flex-col`; escondiendo a los hermanos, el ticket
+      quedaba solo pero seguia siendo un item de ese flex: estirado a lo ancho
+      de la hoja y, con su `margin: 0 auto`, centrado en ella. Esconder a los
+      hermanos arregla QUE se imprime, no COMO se acomoda lo que queda. Ese era
+      el "sale al medio de la hoja".
+
+   3. El ticket va incrustado como HTML, no en un iframe. Con iframe salio un
+      metro de rollo en blanco: al imprimir, el navegador rearma el iframe desde
+      su `srcdoc` y el `<style>` con el `@page` que se le agrego al DOM vivo no
+      existe para ese trabajo. Se notaba en el papel, porque se imprimio el
+      encabezado del navegador, que solo aparece si `margin: 0` no se aplico.
+
+   El alto del `@page` lo escribe `imprimirTicket()` justo antes de imprimir,
+   porque el CSS no puede saber cuanto mide un ticket hasta armarlo, y
+   `size: 80mm auto` no es sintaxis valida: mezclar una medida con `auto` hace
+   que el navegador descarte la regla entera y caiga en tamaño carta. */
+
+.impresion-ticket { display: none; }
+
+@media print {
+  /* Red por si la medicion fallara: 80mm de ancho, no tamaño carta. */
+  @page {
+    size: 80mm 250mm;
+    margin: 0;
+  }
+
+  html,
+  body {
+    display: block !important;   /* punto 2: sin esto sale centrada */
+    width: 80mm !important;
+    min-height: 0 !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  /* Se cortan los HIJOS DIRECTOS de <body> para que el ticket, que vive ahi
+     por un portal, quede como unico contenido de la pagina. */
+  body > *:not(.impresion-ticket) {
+    display: none !important;
+  }
+  .impresion-ticket {
+    display: block !important;
+    width: 80mm !important;
+  }
+}
