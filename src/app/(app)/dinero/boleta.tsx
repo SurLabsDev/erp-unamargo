@@ -1,5 +1,7 @@
 "use client";
 
+import { createPortal } from "react-dom";
+import { useSyncExternalStore } from "react";
 import { Unamargo } from "@/components/marca";
 import { formatMoney } from "@/lib/format";
 import type { Boleta as DatosBoleta } from "./actions";
@@ -86,5 +88,42 @@ export function Boleta({
         <p className="boleta-nota">Comprobante de entrega. No es factura.</p>
       </footer>
     </div>
+  );
+}
+
+/**
+ * La copia que sale por la impresora.
+ *
+ * Va colgada de <body> por un portal, y no dentro del dialogo, por dos razones
+ * que son exactamente los dos sintomas que tuvo la primera version:
+ *
+ *  - **Salia centrada.** `position: absolute` se mide contra el ancestro
+ *    posicionado mas cercano, que era el dialogo, no la pagina. Colgando de
+ *    <body> no hay ancestro que la corra.
+ *  - **Salian metros de papel.** El CSS de impresion ahora esconde con
+ *    `display: none` a todos los hermanos, asi que la boleta queda como unico
+ *    contenido y el papel mide lo que mide ella.
+ *
+ * Si, esto renderiza la boleta dos veces: la de la pantalla vive dentro del
+ * dialogo y esta vive en <body>. Son treinta lineas de HTML y evita pelear
+ * contra el posicionamiento del dialogo, que es la clase de pelea que ya se
+ * perdio una vez con el cajon del carrito.
+ */
+export function BoletaImpresion(props: {
+  datos: DatosBoleta;
+  empresa: string;
+  moneda: string;
+}) {
+  const montado = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
+  if (!montado) return null;
+  return createPortal(
+    <div className="boleta-impresion">
+      <Boleta {...props} />
+    </div>,
+    document.body,
   );
 }

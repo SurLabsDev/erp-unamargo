@@ -20,7 +20,7 @@ import {
   registrarCompraAction,
   type Boleta as DatosBoleta,
 } from "./actions";
-import { Boleta } from "./boleta";
+import { Boleta, BoletaImpresion } from "./boleta";
 
 type CategoryOption = { id: string; name: string; kind: "income" | "expense" };
 export type ProductoVendible = {
@@ -194,6 +194,7 @@ function CashMovementForm(props: {
         <div className="max-h-[52vh] overflow-y-auto rounded-md border bg-white p-3">
           <Boleta datos={boleta} empresa={empresa} moneda={moneda} />
         </div>
+        <BoletaImpresion datos={boleta} empresa={empresa} moneda={moneda} />
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose}>

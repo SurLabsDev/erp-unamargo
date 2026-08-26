@@ -279,6 +279,9 @@
 }
 .boleta-nota { margin-top: 1mm; font-size: 7.5pt; }
 
+/* La copia que se imprime. En pantalla no existe. */
+.boleta-impresion { display: none; }
+
 /* --- Al imprimir ------------------------------------------------------- */
 @media print {
   /* El rollo no tiene paginas: `auto` deja que la boleta mida lo que mida y
@@ -287,18 +290,27 @@
     size: 80mm auto;
     margin: 0;
   }
-  /* Se imprime SOLO la boleta. Sin esto sale el ERP entero: menu, tabla y el
-     dialogo abierto. */
-  body * { visibility: hidden; }
-  .boleta, .boleta * { visibility: visible; }
-  .boleta {
-    position: absolute;
-    inset: 0 auto auto 0;
-    width: 72mm;
-    padding: 2mm 0 6mm;
+
+  /* `display: none` y NO `visibility: hidden`.
+     La diferencia es la que hace que la boleta salga bien o que salgan tres
+     metros de papel: `visibility` esconde pero DEJA EL ELEMENTO OCUPANDO SU
+     LUGAR, asi que la tabla de Dinero seguia midiendo lo que mide y el papel
+     salia con esa altura, en blanco. `display: none` lo saca del layout.
+
+     Se corta a los hijos directos de <body> para que la boleta, que vive ahi
+     por un portal, quede como UNICO contenido de la pagina: arranca arriba a
+     la izquierda y el papel mide lo que mide ella. */
+  body > *:not(.boleta-impresion) {
+    display: none !important;
   }
-  /* El navegador agrega cabecera y pie con la URL y la fecha si el usuario no
-     los desactivo. No se pueden sacar por CSS, pero al menos no arrastran
-     fondo. */
-  html, body { background: #fff; }
+  .boleta-impresion {
+    display: block !important;
+  }
+
+  html,
+  body {
+    background: #fff;
+    margin: 0;
+    padding: 0;
+  }
 }
