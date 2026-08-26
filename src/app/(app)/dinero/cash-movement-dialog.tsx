@@ -20,7 +20,7 @@ import {
   registrarCompraAction,
   type Boleta as DatosBoleta,
 } from "./actions";
-import { Boleta, BoletaImpresion } from "./boleta";
+import { Boleta, BoletaImpresion, imprimirBoleta } from "./boleta";
 
 type CategoryOption = { id: string; name: string; kind: "income" | "expense" };
 export type ProductoVendible = {
@@ -200,7 +200,7 @@ function CashMovementForm(props: {
           <Button type="button" variant="outline" onClick={onClose}>
             Listo
           </Button>
-          <Button type="button" onClick={() => window.print()}>
+          <Button type="button" onClick={imprimirBoleta}>
             <Printer className="size-4" />
             Imprimir boleta
           </Button>

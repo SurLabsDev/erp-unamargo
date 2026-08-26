@@ -127,3 +127,35 @@ export function BoletaImpresion(props: {
     document.body,
   );
 }
+
+/**
+ * Imprime la boleta con el papel del largo exacto.
+ *
+ * `@page { size: 80mm auto }` NO es sintaxis valida -no se puede mezclar una
+ * medida con `auto`-, asi que el navegador descarta la regla entera y cae en
+ * tamaño carta: 80mm de boleta y 180mm de papel en blanco atras. Ese era el
+ * "kilometrica".
+ *
+ * Y el CSS no puede resolverlo solo, porque no sabe cuanto va a medir la
+ * boleta hasta que la arma. Asi que se mide aca, se escribe un `@page` con el
+ * alto real y recien ahi se imprime.
+ */
+export function imprimirBoleta() {
+  const nodo = document.querySelector<HTMLElement>(".boleta-impresion .boleta");
+  if (!nodo) {
+    window.print();
+    return;
+  }
+  // 1mm = 96/25.4 px de CSS. Se agregan 4mm de cola para que el corte no muerda
+  // la ultima linea.
+  const alto = Math.ceil((nodo.getBoundingClientRect().height * 25.4) / 96) + 4;
+
+  const id = "hoja-boleta";
+  document.getElementById(id)?.remove();
+  const estilo = document.createElement("style");
+  estilo.id = id;
+  estilo.textContent = `@page { size: 80mm ${alto}mm; margin: 0; }`;
+  document.head.appendChild(estilo);
+
+  window.print();
+}

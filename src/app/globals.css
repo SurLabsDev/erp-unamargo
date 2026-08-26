@@ -286,8 +286,12 @@
 @media print {
   /* El rollo no tiene paginas: `auto` deja que la boleta mida lo que mida y
      corte donde termina, en vez de tirar papel hasta completar una hoja. */
+  /* El alto real lo escribe `imprimirBoleta()` en una regla `@page` propia
+     justo antes de imprimir, porque el CSS no puede saber cuanto mide la
+     boleta. Esto es solo la red por si esa medicion fallara: 80mm de ancho y
+     un alto corto, en vez del tamaño carta que el navegador usa por defecto. */
   @page {
-    size: 80mm auto;
+    size: 80mm 150mm;
     margin: 0;
   }
 
