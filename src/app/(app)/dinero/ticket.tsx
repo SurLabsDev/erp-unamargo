@@ -1,7 +1,7 @@
 "use client";
 
 import { createPortal } from "react-dom";
-import { useMemo, useSyncExternalStore, type RefObject } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import type { Boleta } from "./actions";
 import {
   cuerpoTicket,
@@ -11,9 +11,6 @@ import {
   numeroTicket,
   type DatosTicket,
 } from "./ticket-80mm";
-
-/** 1mm = 96/25.4 px de CSS. */
-const PX_POR_MM = 96 / 25.4;
 
 /**
  * El ticket en pantalla y su copia para imprimir.
@@ -29,12 +26,10 @@ export function VistaTicket({
   boleta,
   empresa,
   moneda,
-  iframeRef,
 }: {
   boleta: Boleta;
   empresa: string;
   moneda: string;
-  iframeRef: RefObject<HTMLIFrameElement | null>;
 }) {
   const datos = useMemo(
     () => datosDeVenta(boleta, empresa, moneda),
@@ -46,7 +41,6 @@ export function VistaTicket({
     <>
       <div className="max-h-[52vh] overflow-auto rounded-md border bg-neutral-100 p-3">
         <iframe
-          ref={iframeRef}
           title="Vista previa del ticket"
           srcDoc={documento}
           onLoad={(e) => {
@@ -137,30 +131,12 @@ function altoDelTicketPx(doc: Document): number {
 /**
  * Manda el ticket a la impresora.
  *
- * Imprime LA PAGINA, con el ticket como unico contenido encendido. Los otros
- * dos caminos fallaron en papel y estan documentados donde ocurren: imprimir un
- * iframe sale en blanco porque el navegador lo rearma desde su fuente, y abrir
- * una pestaña aparte depende de que el navegador la deje abrir. Este es ademas
- * el unico que se puede verificar de punta a punta desde afuera, porque es lo
- * que imprime un navegador de verdad cuando se le pide la pagina.
- *
- * El largo del papel se mide en la vista previa -que es el mismo ticket al
- * mismo ancho- y se escribe en un `@page`. La copia de impresion no se puede
- * medir: esta en `display: none` y un elemento sin display mide cero.
+ * Imprime LA PAGINA, con el ticket como unico contenido encendido, y no le pide
+ * al navegador ningun tamaño de hoja. Las dos cosas estan explicadas en el
+ * bloque de impresion de `globals.css`; la segunda es la que costo tres
+ * intentos: pedir una hoja de 80mm por lo que mide el ticket no achica el
+ * papel, CENTRA el ticket en el papel que la impresora ya tiene.
  */
-export function imprimirTicket(iframe: HTMLIFrameElement | null) {
-  const doc = iframe?.contentDocument;
-  const px = doc ? altoDelTicketPx(doc) : 0;
-  // +2mm de tolerancia de redondeo. La cola para el cortador ya son los 10mm
-  // de padding de abajo del ticket.
-  const mm = px > 0 ? Math.ceil(px / PX_POR_MM) + 2 : 250;
-
-  const id = "hoja-ticket";
-  document.getElementById(id)?.remove();
-  const estilo = document.createElement("style");
-  estilo.id = id;
-  estilo.textContent = `@page { size: 80mm ${mm}mm; margin: 0; }`;
-  document.head.appendChild(estilo);
-
+export function imprimirTicket() {
   window.print();
 }

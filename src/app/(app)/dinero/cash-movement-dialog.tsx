@@ -1,7 +1,7 @@
 "use client";
 
 import { Plus, Printer } from "lucide-react";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -88,8 +88,6 @@ function CashMovementForm(props: {
   /** Cuando hay boleta, la venta YA se guardo: el dialogo deja de ser un
    *  formulario y pasa a ser el comprobante. */
   const [boleta, setBoleta] = useState<DatosBoleta | null>(null);
-  /** El iframe de la vista previa. Se usa para medir el largo del papel. */
-  const ticketRef = useRef<HTMLIFrameElement>(null);
 
   const kindCategories = categories.filter((c) => c.kind === kind);
   const categoriaElegida = categories.find((c) => c.id === categoryId);
@@ -193,18 +191,13 @@ function CashMovementForm(props: {
 
         {/* Lo que se ve ES el documento que se imprime, al ancho real del
             papel: quien cobra sabe que va a salir antes de gastar el rollo. */}
-        <VistaTicket
-          boleta={boleta}
-          empresa={empresa}
-          moneda={moneda}
-          iframeRef={ticketRef}
-        />
+        <VistaTicket boleta={boleta} empresa={empresa} moneda={moneda} />
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose}>
             Listo
           </Button>
-          <Button type="button" onClick={() => imprimirTicket(ticketRef.current)}>
+          <Button type="button" onClick={imprimirTicket}>
             <Printer className="size-4" />
             Imprimir ticket
           </Button>

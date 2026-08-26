@@ -220,17 +220,25 @@
       existe para ese trabajo. Se notaba en el papel, porque se imprimio el
       encabezado del navegador, que solo aparece si `margin: 0` no se aplico.
 
-   El alto del `@page` lo escribe `imprimirTicket()` justo antes de imprimir,
-   porque el CSS no puede saber cuanto mide un ticket hasta armarlo, y
-   `size: 80mm auto` no es sintaxis valida: mezclar una medida con `auto` hace
-   que el navegador descarte la regla entera y caiga en tamaño carta. */
+   4. NO se pide un tamaño de papel. Este fue el error de fondo, y estuvo
+      abajo de los tres intentos: al imprimir en una impresora FISICA, Chrome
+      no inventa un tamaño de hoja. Usa uno de los que ofrece el driver, y si
+      la caja de pagina que pide el CSS es mas chica que esa hoja, LA CENTRA.
+      Por eso el ticket salia flotando en el medio de una hoja enorme: pedir
+      `size: 80mm 213mm` contra un papel de 80x297 deja 42mm en blanco arriba
+      y 42mm abajo, y contra uno de 3276mm de rollo continuo deja un metro y
+      medio. Pedir MENOS papel del que hay no achica la hoja: centra el
+      contenido en ella.
+      Con `size: auto` la caja de pagina ES la hoja del driver, asi que el
+      ticket arranca pegado arriba a la izquierda pase lo que pase. Lo que
+      sobre atras lo decide el corte de la impresora, que se configura en el
+      driver y no desde aca. */
 
 .impresion-ticket { display: none; }
 
 @media print {
-  /* Red por si la medicion fallara: 80mm de ancho, no tamaño carta. */
   @page {
-    size: 80mm 250mm;
+    size: auto;   /* ver punto 4: pedir un tamaño propio lo centra en la hoja */
     margin: 0;
   }
 
