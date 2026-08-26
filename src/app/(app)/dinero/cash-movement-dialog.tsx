@@ -1,7 +1,7 @@
 "use client";
 
 import { Plus, Printer } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,7 +20,7 @@ import {
   registrarCompraAction,
   type Boleta as DatosBoleta,
 } from "./actions";
-import { Boleta, BoletaImpresion, imprimirBoleta } from "./boleta";
+import { imprimirTicket, VistaTicket } from "./ticket";
 
 type CategoryOption = { id: string; name: string; kind: "income" | "expense" };
 export type ProductoVendible = {
@@ -88,6 +88,8 @@ function CashMovementForm(props: {
   /** Cuando hay boleta, la venta YA se guardo: el dialogo deja de ser un
    *  formulario y pasa a ser el comprobante. */
   const [boleta, setBoleta] = useState<DatosBoleta | null>(null);
+  /** El iframe del ticket: imprimir es imprimir ESE documento, no la pagina. */
+  const ticketRef = useRef<HTMLIFrameElement>(null);
 
   const kindCategories = categories.filter((c) => c.kind === kind);
   const categoriaElegida = categories.find((c) => c.id === categoryId);
@@ -185,24 +187,26 @@ function CashMovementForm(props: {
         <DialogHeader>
           <DialogTitle>Venta registrada</DialogTitle>
           <DialogDescription>
-            Boleta N° {boleta.numero}. Así va a salir impresa.
+            Ticket N° {boleta.numero}. Así va a salir impreso.
           </DialogDescription>
         </DialogHeader>
 
-        {/* Se ve al mismo ancho que el papel (72mm) para que quien cobra sepa
-            que va a salir antes de gastar el rollo. */}
-        <div className="max-h-[52vh] overflow-y-auto rounded-md border bg-white p-3">
-          <Boleta datos={boleta} empresa={empresa} moneda={moneda} />
-        </div>
-        <BoletaImpresion datos={boleta} empresa={empresa} moneda={moneda} />
+        {/* Lo que se ve ES el documento que se imprime, al ancho real del
+            papel: quien cobra sabe que va a salir antes de gastar el rollo. */}
+        <VistaTicket
+          boleta={boleta}
+          empresa={empresa}
+          moneda={moneda}
+          iframeRef={ticketRef}
+        />
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose}>
             Listo
           </Button>
-          <Button type="button" onClick={imprimirBoleta}>
+          <Button type="button" onClick={() => imprimirTicket(ticketRef.current)}>
             <Printer className="size-4" />
-            Imprimir boleta
+            Imprimir ticket
           </Button>
         </DialogFooter>
       </>

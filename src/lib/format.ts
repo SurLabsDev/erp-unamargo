@@ -43,6 +43,21 @@ export function formatDateTime(value: Date, timezone: string): string {
 }
 
 /**
+ * "Ahora" como "15:30" en la zona de la instancia.
+ *
+ * `hourCycle: "h23"` y no `hour12: false`: con `hour12` algunas locales
+ * devuelven "24:00" para la medianoche en vez de "00:00".
+ */
+export function horaInTimeZone(timezone: string, now: Date = new Date()): string {
+  return new Intl.DateTimeFormat(LOCALE, {
+    timeZone: timezone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(now);
+}
+
+/**
  * "Today" as YYYY-MM-DD computed in the INSTANCE timezone, never in server
  * UTC (PROMPT_ERP.md §2): at 21:00 in Montevideo, UTC is already tomorrow.
  */

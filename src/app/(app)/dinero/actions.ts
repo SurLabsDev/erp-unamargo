@@ -20,7 +20,11 @@ import {
   validateCashDate,
   voidReasonSchema,
 } from "@/lib/domain/money";
-import { todayInTimeZone } from "@/lib/format";
+import {
+  horaInTimeZone,
+  SUPPORT_DISPLAY_NAME,
+  todayInTimeZone,
+} from "@/lib/format";
 import { ETIQUETA_PANEL } from "../panel-cache";
 import { ETIQUETA_SETTINGS } from "@/lib/settings";
 import { avisarALaWeb } from "@/lib/avisar-web";
@@ -48,6 +52,11 @@ export type LineaBoleta = {
 export type Boleta = {
   numero: number;
   fecha: string;
+  /** "15:30" en la zona de la instancia, no en el UTC del servidor. */
+  hora: string;
+  /** Quien cobro. La cuenta de soporte sale enmascarada, igual que en el
+   *  historial: el cliente no tiene por que ver a Surlabs en su ticket. */
+  cajero: string;
   lineas: LineaBoleta[];
   total: string;
 };
@@ -362,6 +371,8 @@ async function registrarOperacion(
       boleta: {
         numero: movimiento.id,
         fecha: input.date,
+        hora: horaInTimeZone(instance.timezone),
+        cajero: user.isSupport ? SUPPORT_DISPLAY_NAME : user.name,
         lineas: lineasBoleta,
         total: total.toFixed(2),
       },
