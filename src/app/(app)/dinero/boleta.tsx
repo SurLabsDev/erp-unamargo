@@ -141,14 +141,20 @@ export function BoletaImpresion(props: {
  * alto real y recien ahi se imprime.
  */
 export function imprimirBoleta() {
-  const nodo = document.querySelector<HTMLElement>(".boleta-impresion .boleta");
-  if (!nodo) {
+  // Se mide la copia VISIBLE, no la de impresion: esa esta en `display: none`
+  // y un elemento sin display mide cero. Medirla daba una hoja de 4mm y una
+  // boleta cortada en veintitres pedazos.
+  const alturas = [...document.querySelectorAll<HTMLElement>(".boleta")].map(
+    (n) => n.getBoundingClientRect().height,
+  );
+  const alto_px = Math.max(0, ...alturas);
+  if (alto_px === 0) {
     window.print();
     return;
   }
   // 1mm = 96/25.4 px de CSS. Se agregan 4mm de cola para que el corte no muerda
   // la ultima linea.
-  const alto = Math.ceil((nodo.getBoundingClientRect().height * 25.4) / 96) + 4;
+  const alto = Math.ceil((alto_px * 25.4) / 96) + 4;
 
   const id = "hoja-boleta";
   document.getElementById(id)?.remove();

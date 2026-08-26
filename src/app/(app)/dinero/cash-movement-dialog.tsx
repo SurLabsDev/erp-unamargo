@@ -282,7 +282,11 @@ function CashMovementForm(props: {
         {/* PASO 3: el detalle. Con productos es una lista de lineas; sin
             productos, el concepto y el monto de siempre. */}
         {paso === 3 ? (
-          <div className="grid gap-4">
+          /* Con varios productos el contenido crecia mas que la pantalla y el
+             boton de registrar quedaba fuera de alcance: la venta no se podia
+             cerrar. El detalle scrollea y el pie del dialogo queda siempre
+             visible. */
+          <div className="grid max-h-[55vh] gap-4 overflow-y-auto pr-1">
             {conProductos ? (
               <>
                 <div className="grid gap-2">
