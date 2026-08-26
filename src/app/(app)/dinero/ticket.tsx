@@ -16,8 +16,9 @@ const PX_POR_MM = 96 / 25.4;
  * La vista previa del ticket.
  *
  * No es "una version en pantalla parecida a la impresa": es EL MISMO documento
- * que se manda a la impresora, al ancho real del papel. Antes habia dos
- * renders -uno para la pantalla y otro escondido para imprimir- y eso ya se
+ * que se manda a la impresora -el de imprimir agrega el largo del papel y el
+ * script que se imprime solo, nada mas-, al ancho real del papel. Antes habia
+ * dos renders, uno para la pantalla y otro escondido para imprimir, y eso ya se
  * pago caro: el que se veia estaba bien y el que salia no, y no habia forma de
  * darse cuenta sin gastar rollo.
  */
@@ -101,36 +102,49 @@ function altoDelTicketPx(doc: Document): number {
 /**
  * Manda el ticket a la impresora.
  *
- * Se imprime el DOCUMENTO DEL IFRAME (`contentWindow.print()`), no la pagina
- * del ERP. Esa es la diferencia entre que salga bien y que salga corrida al
- * medio de la hoja: imprimiendo la pagina del ERP, el navegador aplica el CSS
- * del ERP -empezando por el <body>, que es `flex min-h-full flex-col`- y el
- * ticket termina estirado y centrado dentro de la hoja que define el driver.
- * El iframe tiene su propio documento, donde html y body miden 80mm y no hay
- * una sola regla nuestra.
+ * Abre el ticket como UNA PESTAÑA PROPIA y deja que ese documento se imprima
+ * solo. No se imprime el iframe de la vista previa, y no se imprime la pagina
+ * del ERP. Las dos alternativas ya fallaron en papel:
  *
- * El alto del papel se mide y se escribe aca, en un `@page`, porque el CSS no
- * puede saber cuanto mide un ticket hasta armarlo, y `size: 80mm auto` no es
- * sintaxis valida: el navegador descarta la regla y cae en tamaño carta.
+ *  - **Imprimir la pagina del ERP** la sacaba corrida al medio de la hoja: una
+ *    hoja impresa arrastra el CSS de la pagina que la contiene, y el <body> del
+ *    ERP es `flex min-h-full flex-col`. Esconder a los hermanos arregla QUE se
+ *    imprime, no COMO se acomoda lo que queda.
+ *  - **Imprimir el iframe** salio un metro de papel en blanco con el encabezado
+ *    del navegador arriba. Chrome vuelve a leer el `srcdoc` para armar la
+ *    impresion, asi que el <style> con el `@page` que se le agregaba al DOM vivo
+ *    no existia para el trabajo de impresion. Que se imprimiera el encabezado
+ *    del navegador lo delata: solo aparece si `margin: 0` no se aplico.
+ *
+ * Un documento de primer nivel, con el `@page` escrito en su propia fuente, es
+ * el camino que no depende de ninguna de esas dos cosas.
+ *
+ * Devuelve la URL del ticket si el navegador bloqueo la ventana, y null si
+ * salio bien: un "imprimir" que no hace nada en silencio es una venta que se
+ * va sin comprobante.
  */
-export function imprimirTicket(iframe: HTMLIFrameElement | null) {
-  const ventana = iframe?.contentWindow;
+export function imprimirTicket(
+  iframe: HTMLIFrameElement | null,
+  boleta: Boleta,
+  empresa: string,
+  moneda: string,
+): string | null {
+  // El alto sale de la vista previa, que es el mismo documento al mismo ancho.
+  // La pestaña vuelve a medirse igual, pero asi el `@page` correcto ya viaja
+  // escrito en la fuente.
   const doc = iframe?.contentDocument;
-  if (!ventana || !doc) return;
+  const px = doc ? altoDelTicketPx(doc) : 0;
+  const altoMm = px > 0 ? Math.ceil(px / PX_POR_MM) + 2 : undefined;
 
-  const px = altoDelTicketPx(doc);
-  if (px > 0) {
-    // +2mm de tolerancia de redondeo. La cola para el cortador ya son los 10mm
-    // de padding de abajo del ticket: agregar mas es tirar rollo.
-    const mm = Math.ceil(px / PX_POR_MM) + 2;
-    const id = "hoja-ticket";
-    doc.getElementById(id)?.remove();
-    const estilo = doc.createElement("style");
-    estilo.id = id;
-    estilo.textContent = `@page { size: 80mm ${mm}mm; margin: 0; }`;
-    doc.head.appendChild(estilo);
-  }
+  const html = documentoTicket(datosDeVenta(boleta, empresa, moneda), {
+    altoMm,
+    autoimprimir: true,
+  });
+  const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));
 
-  ventana.focus();
-  ventana.print();
+  const ventana = window.open(url, "_blank");
+  if (!ventana) return url;
+  // La pestaña se cierra sola al terminar; recien ahi se puede soltar el blob.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return null;
 }

@@ -179,7 +179,8 @@ function codigoDeBarras(valor: string): string {
 
 // --- El documento ----------------------------------------------------------
 
-const ESTILOS = `
+function estilos(altoMm: number): string {
+  return `
 :root {
   --paper-width: 80mm;
   --safe-margin: 7mm;
@@ -187,12 +188,16 @@ const ESTILOS = `
   --paper: #fff;
 }
 
-/* Red de seguridad nomas: el alto REAL lo mide e inyecta \`imprimirTicket()\`
-   antes de llamar a print, porque el CSS no puede saber cuanto va a medir un
-   ticket hasta armarlo. Y no se puede escribir \`size: 80mm auto\`: mezclar una
-   medida con \`auto\` no es sintaxis valida, el navegador descarta la regla
-   entera y cae en tamaño carta. Eso era la "boleta kilometrica". */
-@page { size: 80mm 250mm; margin: 0; }
+/* El alto del papel se escribe ACA, en la fuente del documento, y no se
+   inyecta despues de cargar. Esa diferencia es la que hizo que saliera un
+   metro de papel en blanco: al imprimir un iframe, Chrome vuelve a leer el
+   \`srcdoc\`, asi que cualquier <style> agregado al DOM vivo se pierde. Se
+   notaba en el papel: salio el encabezado del navegador, que solo aparece si
+   \`margin: 0\` NO se aplico.
+   Y no se puede escribir \`size: 80mm auto\`: mezclar una medida con \`auto\` no
+   es sintaxis valida, el navegador descarta la regla entera y cae en tamaño
+   carta. */
+@page { size: 80mm ${altoMm}mm; margin: 0; }
 
 * { box-sizing: border-box; }
 
@@ -330,14 +335,51 @@ body { font-size: 8pt; line-height: 1.2; }
      del ultimo contenido es justamente lo que agrega una hoja en blanco. */
 }
 `;
+}
 
 /**
- * El documento completo del ticket, listo para meter en un iframe.
+ * El script que se imprime a si mismo. Va SOLO en la copia que se manda a la
+ * impresora, nunca en la vista previa -una vista previa que llama a print() al
+ * cargar abre el dialogo de impresion sola-.
+ *
+ * Mide y corrige el alto antes de imprimir. El valor bueno ya viene escrito en
+ * el `@page` de la fuente; esto es por si el documento se abre en una maquina
+ * que renderiza distinto. Va en la fuente y no inyectado desde afuera
+ * justamente porque lo inyectado se pierde.
+ */
+const AUTOIMPRESION = `
+(function () {
+  window.addEventListener("load", function () {
+    var t = document.querySelector(".ticket");
+    if (t) {
+      var mm = Math.ceil(t.getBoundingClientRect().height / (96 / 25.4)) + 2;
+      var s = document.createElement("style");
+      s.textContent = "@page { size: 80mm " + mm + "mm; margin: 0; }";
+      document.head.appendChild(s);
+    }
+    setTimeout(function () { window.print(); }, 60);
+  });
+  // Se cierra sola cuando termina, asi no queda una pestaña por venta.
+  window.addEventListener("afterprint", function () {
+    setTimeout(function () { window.close(); }, 400);
+  });
+}());`;
+
+/**
+ * El documento completo del ticket.
  *
  * Devuelve HTML como string y no JSX porque el destino no es el arbol de React
- * sino un documento aparte: el iframe lo recibe por `srcdoc`.
+ * sino un documento aparte: la vista previa lo recibe por `srcdoc` y la copia
+ * que se imprime es una pestaña propia hecha con un blob.
+ *
+ * `altoMm` es el largo del papel. Se escribe en la FUENTE del documento: ver el
+ * comentario del `@page`. `autoimprimir` agrega el script que llama a print()
+ * solo, y va unicamente en la copia que se imprime.
  */
-export function documentoTicket(d: DatosTicket): string {
+export function documentoTicket(
+  d: DatosTicket,
+  opciones: { altoMm?: number; autoimprimir?: boolean } = {},
+): string {
   const items = d.items.map((i) => ({
     nombre: i.nombre,
     cantidad: i.cantidad,
@@ -407,7 +449,7 @@ export function documentoTicket(d: DatosTicket): string {
 <head>
 <meta charset="utf-8">
 <title>${esc(d.tipo)} ${esc(d.numero)}</title>
-<style>${ESTILOS}</style>
+<style>${estilos(opciones.altoMm ?? 250)}</style>
 </head>
 <body>
 <main class="ticket">
@@ -456,6 +498,7 @@ export function documentoTicket(d: DatosTicket): string {
     <p class="footer__line">${esc(MARCA.lugar)}</p>
   </footer>
 </main>
+${opciones.autoimprimir ? `<script>${AUTOIMPRESION}</script>` : ""}
 </body>
 </html>`;
 }

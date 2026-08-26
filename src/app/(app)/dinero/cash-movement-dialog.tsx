@@ -88,8 +88,12 @@ function CashMovementForm(props: {
   /** Cuando hay boleta, la venta YA se guardo: el dialogo deja de ser un
    *  formulario y pasa a ser el comprobante. */
   const [boleta, setBoleta] = useState<DatosBoleta | null>(null);
-  /** El iframe del ticket: imprimir es imprimir ESE documento, no la pagina. */
+  /** El iframe de la vista previa. Se usa para medir el largo del papel. */
   const ticketRef = useRef<HTMLIFrameElement>(null);
+  /** Si el navegador bloqueo la pestaña del ticket, su URL, para ofrecerla a
+   *  mano: un "imprimir" que no hace nada en silencio es una venta que se va
+   *  sin comprobante. */
+  const [ticketBloqueado, setTicketBloqueado] = useState<string | null>(null);
 
   const kindCategories = categories.filter((c) => c.kind === kind);
   const categoriaElegida = categories.find((c) => c.id === categoryId);
@@ -200,11 +204,33 @@ function CashMovementForm(props: {
           iframeRef={ticketRef}
         />
 
+        {ticketBloqueado ? (
+          <p className="text-sm text-muted-foreground">
+            El navegador bloqueó la ventana del ticket.{" "}
+            <a
+              href={ticketBloqueado}
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium underline"
+            >
+              Abrilo a mano
+            </a>{" "}
+            y se imprime solo.
+          </p>
+        ) : null}
+
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose}>
             Listo
           </Button>
-          <Button type="button" onClick={() => imprimirTicket(ticketRef.current)}>
+          <Button
+            type="button"
+            onClick={() =>
+              setTicketBloqueado(
+                imprimirTicket(ticketRef.current, boleta, empresa, moneda),
+              )
+            }
+          >
             <Printer className="size-4" />
             Imprimir ticket
           </Button>
