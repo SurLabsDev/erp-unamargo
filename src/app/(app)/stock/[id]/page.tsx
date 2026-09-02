@@ -21,6 +21,7 @@ import {
   listClassificationOptions,
   listMovements,
   listProductImages,
+  listTraitOptions,
 } from "../queries";
 
 export const metadata: Metadata = { title: "Producto" };
@@ -41,10 +42,11 @@ export default async function ProductDetailPage(
   ]);
   if (!product) notFound();
 
-  const [movements, imagenes, opciones] = await Promise.all([
+  const [movements, imagenes, opciones, valoresEje] = await Promise.all([
     listMovements({ productId: id, page }, settings.timezone),
     listProductImages(id),
     listClassificationOptions(),
+    listTraitOptions(),
   ]);
 
   return (
@@ -112,9 +114,12 @@ export default async function ProductDetailPage(
         description={product.description}
         categoryId={product.categoryId}
         subtypeId={product.subtypeId}
+        traitId={product.traitId}
         slug={product.slug}
         currencyCode={settings.currencyCode}
         opciones={opciones}
+        etiquetaEje={settings.productTraitLabel}
+        valoresEje={valoresEje}
         puedeEditar={user.role === "admin"}
         discount={product.discount}
       />

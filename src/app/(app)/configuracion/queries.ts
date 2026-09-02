@@ -1,6 +1,11 @@
 import { asc, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { productCategories, productSubtypes, users } from "@/lib/db/schema";
+import {
+  productCategories,
+  productSubtypes,
+  productTraits,
+  users,
+} from "@/lib/db/schema";
 
 export type UserRow = {
   id: string;
@@ -115,4 +120,38 @@ export async function takenSubtypeSlugs(
     .from(productSubtypes)
     .where(eq(productSubtypes.categoryId, categoryId));
   return new Set(rows.map((r) => r.slug));
+}
+
+// --- Tercer eje de clasificacion --------------------------------------------
+
+export type TraitRow = {
+  id: string;
+  name: string;
+  slug: string;
+  isActive: boolean;
+  productCount: number;
+};
+
+/**
+ * Los valores del tercer eje (Madera, Calabaza, Combinado...) con cuantos
+ * productos usa cada uno. El conteo es lo mismo que en las categorias: es lo
+ * que le explica al cliente por que un valor en uso se desactiva en vez de
+ * borrarse.
+ *
+ * Lista plana, sin anidar: este eje no cuelga de la categoria (ver el
+ * comentario de `product_traits` en el schema).
+ */
+export async function listProductTraits(): Promise<TraitRow[]> {
+  return db
+    .select({
+      id: productTraits.id,
+      name: productTraits.name,
+      slug: productTraits.slug,
+      isActive: productTraits.isActive,
+      // Identifiers spelled out: interpolating drizzle columns inside a
+      // subquery renders them unqualified ("id" resolves to the wrong table).
+      productCount: sql<number>`(select count(*)::int from products p where p.trait_id = product_traits.id)`,
+    })
+    .from(productTraits)
+    .orderBy(asc(productTraits.sortOrder), asc(productTraits.name));
 }

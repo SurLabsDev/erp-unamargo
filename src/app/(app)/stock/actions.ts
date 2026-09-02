@@ -21,6 +21,7 @@ import {
 import {
   productImages,
   productSubtypes,
+  productTraits,
   products,
   stockMovements,
 } from "@/lib/db/schema";
@@ -97,6 +98,48 @@ async function validarClasificacion(
   if (!sub) return "El subtipo no existe.";
   if (sub.categoryId !== categoryId)
     return "Ese subtipo no pertenece a la categoría elegida.";
+  return null;
+}
+
+/** Eje valido = un valor que existe y esta activo, o el que el producto YA
+ * tenia guardado.
+ *
+ * Va al lado de `validarClasificacion` y no adentro por dos motivos: el eje no
+ * cuelga de la categoria ni del subtipo (`product_traits` no tiene foranea a
+ * ninguna de las dos, a diferencia de `product_subtypes`), y necesita un
+ * parametro que aquella no recibe, el valor que el producto ya tiene guardado.
+ * Metido ahi le sumaria dos argumentos muertos a `createProductAction`, que no
+ * toca el eje. La forma si es la misma: devuelve el mensaje en español, o null
+ * si esta todo bien.
+ *
+ * Cubre las dos cosas que la base sola no resuelve. La foranea
+ * `products_trait_id_product_traits_id_fk` rechaza un uuid inexistente, pero
+ * como error de constraint, y ese error sale del `catch` por `handleError`, o
+ * sea como "Ocurrió un error, intentá de nuevo": exactamente lo que
+ * `validarClasificacion` existe para evitar. Y "solo se asignan valores
+ * activos" vivia UNICAMENTE en el filtro de `product-content.tsx`, o sea en la
+ * UI, que es lo que AGENTS.md regla 3 no permite.
+ *
+ * `actual` es lo guardado, no lo que vino del formulario, y ahi esta la
+ * diferencia entre frenar el abuso y romperle el trabajo al admin: un producto
+ * que ya tiene un valor desactivado tiene que poder seguir guardando precio o
+ * descripcion. Lo que se corta es ASIGNAR uno desactivado a un producto que no
+ * lo tenia, que es el mismo criterio con el que `product-content.tsx` arma las
+ * opciones del Select (los activos MAS el guardado). */
+async function validarEje(
+  tx: Tx,
+  traitId: string | null,
+  actual: string | null,
+): Promise<string | null> {
+  if (!traitId || traitId === actual) return null;
+  const [valor] = await tx
+    .select({ isActive: productTraits.isActive })
+    .from(productTraits)
+    .where(eq(productTraits.id, traitId))
+    .limit(1);
+  if (!valor) return "El valor de clasificación elegido no existe.";
+  if (!valor.isActive)
+    return "Ese valor de clasificación está desactivado. Reactivalo en Configuración o elegí otro.";
   return null;
 }
 
@@ -614,6 +657,18 @@ const fichaSchema = z.object({
     .trim()
     .max(2000, { error: "La descripción admite hasta 2000 caracteres." })
     .transform((v) => (v === "" ? null : v)),
+  // Tercer eje. Mismos dos vacios que `clasificacionSchema` y el mismo mapeo a
+  // null: "sin" es lo que vale `SIN_CLASIFICAR` en `classification-selects.tsx`
+  // y es lo que manda el Select cuando el admin elige "Sin definir"; el ""
+  // cubre que el campo no venga en el FormData.
+  traitId: z
+    .string()
+    .trim()
+    .transform((v) => (v === "" || v === "sin" ? null : v))
+    .nullable()
+    .refine((v) => v === null || z.uuid().safeParse(v).success, {
+      error: "El valor de clasificación elegido no es válido.",
+    }),
 });
 
 /**
@@ -630,6 +685,7 @@ export async function updateProductContentAction(
     const parsed = fichaSchema.safeParse({
       price: formData.get("price") ?? "",
       description: formData.get("description") ?? "",
+      traitId: formData.get("traitId") ?? "",
     });
     if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
     const clasif = clasificacionSchema.safeParse({
@@ -639,6 +695,29 @@ export async function updateProductContentAction(
     if (!clasif.success) return { ok: false, error: firstIssue(clasif.error) };
 
     const result = await db.transaction(async (tx): Promise<ActionResult> => {
+      // Se lee el eje guardado antes de escribir porque la excepcion de
+      // `validarEje` -"es el que ya tenia"- se decide contra este valor. Va
+      // con `for update`, el mismo leer-y-despues-escribir de
+      // `updateProductAction`: lo que se compara tiene que ser la fila que
+      // este UPDATE va a pisar y no una version anterior, porque si no un
+      // guardado con el formulario viejo podria reponer un valor desactivado
+      // alegando que "ya lo tenia".
+      //
+      // El candado es sobre la fila del producto y nada mas: no impide que
+      // alguien desactive el valor desde Configuracion justo despues de esta
+      // validacion. Tampoco hace falta, porque ese desenlace -un producto
+      // clasificado con un valor recien desactivado- es el estado que
+      // `setProductTraitActiveAction` deja a proposito: desactivar saca el
+      // valor de las opciones nuevas, los productos ya clasificados lo
+      // conservan.
+      const [actual] = await tx
+        .select({ traitId: products.traitId })
+        .from(products)
+        .where(eq(products.id, productId))
+        .limit(1)
+        .for("update");
+      if (!actual) return { ok: false, error: "El producto no existe." };
+
       const invalida = await validarClasificacion(
         tx,
         clasif.data.categoryId,
@@ -646,18 +725,24 @@ export async function updateProductContentAction(
       );
       if (invalida) return { ok: false, error: invalida };
 
-      const [updated] = await tx
+      const ejeInvalido = await validarEje(
+        tx,
+        parsed.data.traitId,
+        actual.traitId,
+      );
+      if (ejeInvalido) return { ok: false, error: ejeInvalido };
+
+      await tx
         .update(products)
         .set({
           price: parsed.data.price,
           description: parsed.data.description,
           categoryId: clasif.data.categoryId,
           subtypeId: clasif.data.subtypeId,
+          traitId: parsed.data.traitId,
           updatedAt: new Date(),
         })
-        .where(eq(products.id, productId))
-        .returning({ id: products.id });
-      if (!updated) return { ok: false, error: "El producto no existe." };
+        .where(eq(products.id, productId));
       return { ok: true, message: "Ficha actualizada." };
     });
 

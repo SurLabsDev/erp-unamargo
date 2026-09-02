@@ -63,6 +63,15 @@ export const settings = pgTable(
       .notNull()
       .default("0"),
     initialBalanceDate: date("initial_balance_date").notNull(),
+    // Como se llama el TERCER eje de clasificacion en esta instancia
+    // ("Material" para una matera, "Talle" para una tienda de ropa, "Sabor"
+    // para una de comida). Vive aca y no en el codigo porque es lo unico que
+    // hace generico al modelo: el ERP no sabe que clasifica ese eje, solo que
+    // existe y como titularlo. Viaja tambien en la API publica: sin la
+    // etiqueta, la web no sabe como titular el filtro.
+    productTraitLabel: text("product_trait_label")
+      .notNull()
+      .default("Característica"),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -115,6 +124,43 @@ export const productSubtypes = pgTable(
   ],
 );
 
+// --- Tercer eje de clasificacion --------------------------------------------
+// Categoria y subtipo describen la FORMA (Mates -> Camionero). Este eje es
+// otra cosa: una lista plana, un solo valor por producto, y con el NOMBRE
+// puesto por cada instancia en `settings.product_trait_label`.
+//
+// Por eso la tabla no se llama `materials`. El ERP se reusa entre clientes:
+// para una matera este eje es el material (madera, calabaza, combinado), para
+// una tienda de ropa es el talle y para una de comida el sabor. Una columna
+// con el rubro de un cliente adentro no le sirve al siguiente, y agregar una
+// por rubro termina en una tabla llena de columnas nulas.
+//
+// NO cuelga de la categoria como los subtipos, a proposito: el eje cruza los
+// rubros (hay mates de madera y bombillas de madera), asi que colgarlo
+// obligaria a cargar el mismo valor una vez por categoria y a que la web
+// tratara dos filas identicas como filtros distintos.
+//
+// Un solo valor por producto, sin tabla puente: lo mixto se resuelve con un
+// valor propio ("Combinado"), que es como el cliente ya lo cuenta. Muchos a
+// muchos costaria una consulta mas y una UI de multiseleccion para un caso
+// que no existe.
+export const productTraits = pgTable("product_traits", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull().unique(), // "Madera"
+  slug: text("slug").notNull().unique(), // "madera" -> filtro de la web
+  sortOrder: integer("sort_order").notNull().default(0),
+  // Como las categorias, un valor NUNCA se borra: se desactiva. Borrarlo
+  // dejaria productos apuntando a una fila que no esta, o los dejaria sin
+  // clasificar en silencio, que es peor porque nadie se entera.
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 export const products = pgTable(
   "products",
   {
@@ -130,6 +176,10 @@ export const products = pgTable(
     // tienen categoria en vez de inventarles una.
     categoryId: uuid("category_id").references(() => productCategories.id),
     subtypeId: uuid("subtype_id"),
+    // Tercer eje (ver product_traits). Nullable como los otros dos: los
+    // productos que ya existen no se clasifican solos, y en algunos rubros el
+    // eje no le aplica a todo el catalogo.
+    traitId: uuid("trait_id").references(() => productTraits.id),
     // --- Contenido para la web del cliente ---------------------------------
     // `price` es de EXHIBICION y nada mas: no alimenta el modulo Dinero, que
     // registra movimientos de caja y no ventas por producto. Nullable porque un
@@ -386,6 +436,7 @@ export type User = typeof users.$inferSelect;
 export type Settings = typeof settings.$inferSelect;
 export type ProductCategory = typeof productCategories.$inferSelect;
 export type ProductSubtype = typeof productSubtypes.$inferSelect;
+export type ProductTrait = typeof productTraits.$inferSelect;
 export type Product = typeof products.$inferSelect;
 export type ProductImage = typeof productImages.$inferSelect;
 export type DiscountCampaignRow = typeof discountCampaigns.$inferSelect;

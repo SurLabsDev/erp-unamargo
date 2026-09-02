@@ -14,6 +14,7 @@ import {
   cashMovements,
   productCategories,
   productSubtypes,
+  productTraits,
   settings,
   users,
 } from "@/lib/db/schema";
@@ -841,6 +842,154 @@ export async function moverProductCategoryAction(
     });
     if (result.ok) await revalidateCatalog();
     return result;
+  } catch (error) {
+    return handleError(error);
+  }
+}
+
+// --- Catalogo: tercer eje de clasificacion ----------------------------------
+//
+// Es la misma administracion que las categorias -crear, renombrar, desactivar-
+// pero sobre una lista plana, y con una diferencia que no tienen los otros dos
+// niveles: la ETIQUETA del eje tambien se edita. En una matera el eje se llama
+// "Material" y sus valores son madera, calabaza y combinado; en una tienda de
+// ropa se llama "Talle". El ERP no sabe cual de los dos es: solo sabe que hay
+// un eje mas, y como titularlo se lo dice `settings.product_trait_label`.
+//
+// Cambiar la etiqueta cambia lo que devuelve `/api/public/v1/stock`, asi que
+// pasa por `revalidateCatalog()` igual que un precio: sin eso la web seguiria
+// titulando el filtro con el nombre viejo hasta que expire su cache.
+
+const traitLabelSchema = z
+  .string({ error: "El nombre del eje es obligatorio." })
+  .trim()
+  .min(1, { error: "El nombre del eje es obligatorio." })
+  .max(30, { error: "El nombre del eje admite hasta 30 caracteres." });
+
+export async function updateProductTraitLabelAction(
+  formData: FormData,
+): Promise<ActionResult> {
+  try {
+    await requireRole("admin");
+    const parsed = traitLabelSchema.safeParse(formData.get("label"));
+    if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
+
+    await db
+      .update(settings)
+      .set({ productTraitLabel: parsed.data, updatedAt: new Date() })
+      .where(eq(settings.id, 1));
+
+    // Las dos: la etiqueta se lee de la configuracion cacheada en todas las
+    // pantallas Y viaja en la API publica.
+    revalidateConfig();
+    await revalidateCatalog();
+    return { ok: true, message: `El eje ahora se llama "${parsed.data}".` };
+  } catch (error) {
+    return handleError(error);
+  }
+}
+
+export async function createProductTraitAction(
+  formData: FormData,
+): Promise<ActionResult> {
+  try {
+    await requireRole("admin");
+    const parsed = catalogNameSchema.safeParse(formData.get("name"));
+    if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
+    const name = parsed.data;
+
+    const [dup] = await db
+      .select({ id: productTraits.id })
+      .from(productTraits)
+      .where(eq(productTraits.name, name))
+      .limit(1);
+    if (dup) return { ok: false, error: "Ya existe un valor con ese nombre." };
+
+    const usados = await db
+      .select({ slug: productTraits.slug })
+      .from(productTraits);
+    const [{ siguiente }] = await db
+      .select({
+        siguiente: sql<number>`coalesce(max(${productTraits.sortOrder}), 0) + 1`,
+      })
+      .from(productTraits);
+
+    await db.insert(productTraits).values({
+      name,
+      slug: uniqueSlug(slugify(name), new Set(usados.map((u) => u.slug))),
+      sortOrder: siguiente,
+    });
+    await revalidateCatalog();
+    return { ok: true, message: `Valor "${name}" creado.` };
+  } catch (error) {
+    return handleError(error);
+  }
+}
+
+/** Renombrar cambia la etiqueta, NUNCA el slug: cambiarlo rompe los links ya
+ * publicados de la web del cliente. */
+export async function renameProductTraitAction(
+  traitId: string,
+  formData: FormData,
+): Promise<ActionResult> {
+  try {
+    await requireRole("admin");
+    const parsed = catalogNameSchema.safeParse(formData.get("name"));
+    if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
+
+    const [dup] = await db
+      .select({ id: productTraits.id })
+      .from(productTraits)
+      .where(
+        and(eq(productTraits.name, parsed.data), ne(productTraits.id, traitId)),
+      )
+      .limit(1);
+    if (dup) return { ok: false, error: "Ya existe un valor con ese nombre." };
+
+    const [updated] = await db
+      .update(productTraits)
+      .set({ name: parsed.data, updatedAt: new Date() })
+      .where(eq(productTraits.id, traitId))
+      .returning({ id: productTraits.id });
+    if (!updated) return { ok: false, error: "El valor no existe." };
+
+    await revalidateCatalog();
+    return {
+      ok: true,
+      message: "Valor renombrado. La dirección web no cambia.",
+    };
+  } catch (error) {
+    return handleError(error);
+  }
+}
+
+/**
+ * Un valor en uso NO se borra: se desactiva, como las categorias y los
+ * subtipos. Borrarlo dejaria productos apuntando a una fila que no esta, y la
+ * alternativa -ponerles null de paso- los desclasificaria en silencio, que es
+ * peor porque nadie se entera hasta que la web deja de filtrarlos.
+ * Desactivar solo lo saca de las opciones para clasificaciones nuevas.
+ */
+export async function setProductTraitActiveAction(
+  traitId: string,
+  active: boolean,
+): Promise<ActionResult> {
+  try {
+    await requireRole("admin");
+    const [updated] = await db
+      .update(productTraits)
+      .set({ isActive: active, updatedAt: new Date() })
+      .where(eq(productTraits.id, traitId))
+      .returning({ name: productTraits.name });
+    if (!updated) return { ok: false, error: "El valor no existe." };
+
+    await revalidateCatalog();
+    return {
+      ok: true,
+      message: active
+        ? `Valor "${updated.name}" reactivado.`
+        : `Valor "${updated.name}" desactivado. Los productos ya clasificados lo conservan.`,
+    };
   } catch (error) {
     return handleError(error);
   }

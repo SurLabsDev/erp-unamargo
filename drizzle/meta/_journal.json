@@ -57,6 +57,13 @@
       "when": 1787615677754,
       "tag": "0007_venta_precio_campana",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788347523663,
+      "tag": "0008_eje_clasificacion_generico",
+      "breakpoints": true
     }
   ]
 }

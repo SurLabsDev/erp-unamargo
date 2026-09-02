@@ -5,6 +5,7 @@ import {
   productCategories,
   productImages,
   productSubtypes,
+  productTraits,
   products,
   stockMovements,
   users,
@@ -44,6 +45,7 @@ export async function listCatalog(): Promise<CatalogRow[]> {
       minStock: products.minStock,
       categoryId: products.categoryId,
       subtypeId: products.subtypeId,
+      traitId: products.traitId,
       price: products.price,
       description: products.description,
       slug: products.slug,
@@ -76,6 +78,7 @@ export async function getCatalogProduct(
         minStock: products.minStock,
         categoryId: products.categoryId,
         subtypeId: products.subtypeId,
+        traitId: products.traitId,
         price: products.price,
         description: products.description,
         slug: products.slug,
@@ -280,6 +283,31 @@ export async function listClassificationOptions(): Promise<
       .filter((s) => s.categoryId === c.id)
       .map((s) => ({ id: s.id, name: s.name })),
   }));
+}
+
+export type OpcionEje = { id: string; name: string; isActive: boolean };
+
+/**
+ * TODOS los valores del tercer eje, activos y desactivados, con el estado a la
+ * vista. Los desactivados no se ofrecen para clasificaciones nuevas, pero el
+ * producto que ya tiene uno lo conserva, y ahi esta el motivo de traerlos: si
+ * la consulta los filtraba, el valor guardado no matcheaba ninguna opcion del
+ * selector y la ficha mostraba un campo en BLANCO, indistinguible de "sin
+ * clasificar". El dato seguia en la base, pero la pantalla decia otra cosa.
+ *
+ * Quien renderiza decide: la ficha muestra los activos mas el que el producto
+ * ya tiene, marcado como desactivado. Filtrar es barato en memoria y esta
+ * tabla es chica; volver a filtrar en SQL vuelve a esconder el dato.
+ */
+export async function listTraitOptions(): Promise<OpcionEje[]> {
+  return db
+    .select({
+      id: productTraits.id,
+      name: productTraits.name,
+      isActive: productTraits.isActive,
+    })
+    .from(productTraits)
+    .orderBy(asc(productTraits.sortOrder), asc(productTraits.name));
 }
 
 /**

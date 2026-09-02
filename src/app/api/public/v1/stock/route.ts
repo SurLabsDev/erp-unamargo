@@ -4,6 +4,7 @@ import {
   productCategories,
   productImages,
   productSubtypes,
+  productTraits,
   products,
 } from "@/lib/db/schema";
 import { resolveDiscount } from "@/lib/domain/discounts";
@@ -45,6 +46,8 @@ export async function GET(): Promise<Response> {
         subtypeId: products.subtypeId,
         subtypeName: productSubtypes.name,
         subtypeSlug: productSubtypes.slug,
+        traitName: productTraits.name,
+        traitSlug: productTraits.slug,
       })
       .from(products)
       .leftJoin(
@@ -52,6 +55,7 @@ export async function GET(): Promise<Response> {
         eq(products.categoryId, productCategories.id),
       )
       .leftJoin(productSubtypes, eq(products.subtypeId, productSubtypes.id))
+      .leftJoin(productTraits, eq(products.traitId, productTraits.id))
       .where(eq(products.isActive, true))
       .orderBy(asc(products.sku)),
     db
@@ -82,6 +86,11 @@ export async function GET(): Promise<Response> {
   return Response.json(
     {
       generated_at: new Date().toISOString(),
+      // Como titular el tercer eje. Va al lado de los items y no adentro de
+      // cada uno porque es de la instancia, no del producto: sin esta linea el
+      // consumidor recibe "madera" y "calabaza" sin saber que ese filtro se
+      // llama Material (o Talle, o Sabor, segun el cliente).
+      trait_label: settings.productTraitLabel,
       items: rows.map((row) => {
         const descuento = resolveDiscount(
           {
@@ -121,6 +130,12 @@ export async function GET(): Promise<Response> {
             : null,
           subtype: row.subtypeName
             ? { name: row.subtypeName, slug: row.subtypeSlug }
+            : null,
+          // Tercer eje, transversal a la categoria: para esta instancia es el
+          // material, para otra el talle. El nombre del campo es generico a
+          // proposito; el titulo del filtro viaja en `trait_label`.
+          trait: row.traitName
+            ? { name: row.traitName, slug: row.traitSlug }
             : null,
           images: porSku.get(row.sku) ?? [],
         };
