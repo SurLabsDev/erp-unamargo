@@ -33,13 +33,25 @@ docker run -d --name surlabs-erp-postgres -p 5433:5432 \
 
 # 2. Instalar, migrar y seedear la demo
 npm install
-cp .env.example .env        # el default ya apunta al Docker de arriba
+export DATABASE_URL="postgres://surlabs:surlabs@localhost:5433/surlabs_erp"
 npm run db:migrate
 npm run db:seed -- --demo
 
 # 3. Levantar
 npm run dev                 # http://localhost:3000
 ```
+
+> **Por qué el `export` y no `cp .env.example .env`.** En este clon, `.env` ya
+> existe y apunta a la base de **producción del cliente**. `npm run dev` no la
+> usa -Next lee `.env.local` primero, y ese sí apunta al Docker-, pero
+> `db:migrate` y `db:seed` leen `.env`. O sea que la receta vieja, copiada tal
+> cual, corría `--reset` (un `truncate` de todas las tablas) contra el
+> inventario real. `DATABASE_URL` en el ambiente le gana a `.env`, así que el
+> `export` es lo que decide a dónde va.
+>
+> El seed además ahora frena solo: con `--demo` o `--reset` contra una base que
+> no es local, corta antes de abrir la conexión y te dice el comando correcto.
+> Se puede saltear con `SEED_FORZAR=1`, a propósito y nunca por descuido.
 
 Credenciales demo (solo desarrollo; impresas también por el seed):
 

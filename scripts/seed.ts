@@ -345,10 +345,51 @@ async function seedDemo(db: ReturnType<typeof createScriptDb>["db"]) {
   );
 }
 
+/**
+ * De donde es la base a la que apunta DATABASE_URL.
+ *
+ * Sirve para una sola cosa y es importante: `--reset` hace un truncate de TODAS
+ * las tablas, y `db:seed` lee `.env`, no `.env.local`. En este repo `.env`
+ * apunta a la base de PRODUCCION del cliente, y el README manda a correr
+ * `npm run db:seed -- --demo --reset` como paso normal de la puesta en marcha
+ * local. O sea que el comando documentado, tal cual esta escrito, borra el
+ * inventario real. No es hipotetico: es copiar y pegar dos lineas del README.
+ */
+function esBaseLocal(url: string | undefined): boolean {
+  if (!url) return true; // sin variable se usa el fallback local del Docker
+  try {
+    const host = new URL(url).hostname;
+    return ["localhost", "127.0.0.1", "::1", "[::1]", "host.docker.internal"]
+      .includes(host);
+  } catch {
+    return false; // si no se puede leer, se asume lo peor
+  }
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const demo = args.includes("--demo");
   const reset = args.includes("--reset");
+
+  // El seguro va ANTES de abrir la conexion: si el destino no es local, no se
+  // toca. Se puede saltear a proposito, nunca por descuido.
+  if ((reset || demo) && !esBaseLocal(process.env.DATABASE_URL)) {
+    const donde = process.env.DATABASE_URL
+      ? new URL(process.env.DATABASE_URL).hostname
+      : "(sin DATABASE_URL)";
+    console.error(
+      `[seed] FRENO: ${reset ? "--reset borra TODAS las tablas" : "--demo escribe datos de prueba"} y la base no es local (${donde}).\n` +
+        `[seed] Si querias la base local, corré:\n` +
+        `[seed]   DATABASE_URL=postgres://surlabs:surlabs@localhost:5433/surlabs_erp npm run db:seed -- ${args.join(" ")}\n` +
+        `[seed] Si de verdad querés hacerlo contra esa base, agregá SEED_FORZAR=1.`,
+    );
+    if (process.env.SEED_FORZAR !== "1") {
+      process.exitCode = 1;
+      return;
+    }
+    console.warn("[seed] SEED_FORZAR=1: siguiendo igual contra una base NO local.");
+  }
+
   const { db, close } = createScriptDb();
 
   try {
