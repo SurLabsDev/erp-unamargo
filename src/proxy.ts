@@ -2,8 +2,9 @@ import NextAuth from "next-auth";
 import { authConfig } from "@/lib/auth.config";
 
 // Protects everything except /login, /api/auth/* (Auth.js), /api/public/*
-// (read-only public stock API) and static assets. Full checks (is_active,
-// role) happen server-side on every page/action via requireUser().
+// (the read-only public APIs: stock and pop-up) and static assets. Full
+// checks (is_active, role) happen server-side on every page/action via
+// requireUser().
 //
 // `icon.svg` va en la lista junto a `favicon.ico`: es el favicon que genera
 // Next desde `app/icon.svg`, y protegido devuelve 307, asi que la pestaña del

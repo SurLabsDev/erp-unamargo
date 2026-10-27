@@ -31,6 +31,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/stock", label: "Stock" },
   { href: "/dinero", label: "Dinero" },
   { href: "/descuentos", label: "Descuentos", adminOnly: true },
+  { href: "/popups", label: "Pop-ups", adminOnly: true },
   { href: "/importar", label: "Importar", adminOnly: true },
   { href: "/configuracion", label: "Configuración", adminOnly: true },
 ];
@@ -131,7 +132,11 @@ export function AppHeader(props: {
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="sm" className="gap-2">
                 <UserRound className="size-4" />
-                <span className="hidden max-w-32 truncate lg:inline">
+                {/* Desde xl y no desde lg: con siete secciones, entre 1024 y
+                    ~1050px el nombre le quitaba al menu el lugar justo para
+                    partir "Pop-ups" en dos lineas (medido en Chrome). El
+                    nombre sigue en el encabezado del desplegable. */}
+                <span className="hidden max-w-32 truncate xl:inline">
                   {userName}
                 </span>
               </Button>

@@ -14,7 +14,7 @@ import { db, type Tx } from "@/lib/db/client";
 // reactivate, import): a plain COUNT has a race between two admins.
 import { PRODUCT_LIMIT_LOCK } from "@/lib/db/locks";
 import {
-  deleteProductImage,
+  deleteImage,
   storageConfigured,
   uploadProductImage,
 } from "@/lib/storage";
@@ -598,7 +598,7 @@ export async function deleteProductImageAction(
     // queda un huerfano en el bucket (invisible y barato); al reves quedaria
     // una foto rota en la web del cliente, que se ve.
     await db.delete(productImages).where(eq(productImages.id, imageId));
-    await deleteProductImage(row.path);
+    await deleteImage(row.path);
 
     revalidatePath(`/stock/${row.productId}`);
     revalidatePath("/stock");

@@ -13,8 +13,9 @@ import { listCampaignsWithTargets } from "@/app/(app)/descuentos/queries";
 import { getSettings } from "@/lib/settings";
 import { publicImageUrl } from "@/lib/storage";
 
-// The ONLY public endpoint (PROMPT_ERP.md §10): read-only catalog for the
-// client's site. No auth, no cookies. Abuse is handled by CDN caching
+// Public endpoint (PROMPT_ERP.md §10): read-only catalog for the client's
+// site. It was the only one until /v1/popup (DECISIONS.md 2026-10-27), which
+// follows the same rules. No auth, no cookies. Abuse is handled by CDN caching
 // (s-maxage + SWR), not rate limiting. Versioned under /v1 because breaking it
 // breaks the client's website: fields may only be ADDED, never renamed nor
 // removed. NEVER expose: minimums, movements, money, users or internal ids.

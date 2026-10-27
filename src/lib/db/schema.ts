@@ -306,6 +306,55 @@ export const discountTargets = pgTable(
   ],
 );
 
+// Pop-ups for the client's public website. DISPLAY content only, like the
+// discounts: nothing here touches stock or money. Only ONE is shown at a time,
+// the most recently updated live one (`pickPopup` in src/lib/domain/popups.ts),
+// so every write path bumps `updated_at`. Rows are never deleted: the switch
+// turns them off, same as discount campaigns.
+export const sitePopups = pgTable(
+  "site_popups",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    title: text("title").notNull(),
+    body: text("body"), // plain text, "\n" line breaks; never HTML
+    // Storage path in the `productos` bucket, under `popups/`. Same rule as
+    // product_images.path: a new uuid name per upload, never reused, because
+    // the storage CDN keeps serving a cached URL after the object is replaced.
+    imagePath: text("image_path"),
+    // Button: both or neither (CHECK below). The URL is ONLY `https://…` or an
+    // in-page `#anchor`: `isSafeCtaUrl` enforces it on every write path and
+    // again on the public endpoint, since it ends up in an href on the site.
+    ctaLabel: text("cta_label"),
+    ctaUrl: text("cta_url"),
+    // Both optional, unlike a discount campaign's: an open-ended notice is the
+    // normal case and the switch is what ends it.
+    startsOn: date("starts_on"),
+    endsOn: date("ends_on"),
+    // Born OFF, unlike a discount campaign: a live pop-up is public the moment
+    // it exists, and its image can only be uploaded once the row does.
+    isActive: boolean("is_active").notNull().default(false),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    check(
+      "site_popups_cta_check",
+      sql`(${t.ctaLabel} is null) = (${t.ctaUrl} is null)`,
+    ),
+    check(
+      "site_popups_dates_check",
+      sql`${t.startsOn} is null or ${t.endsOn} is null or ${t.endsOn} >= ${t.startsOn}`,
+    ),
+  ],
+);
+
 // APPEND-ONLY ledger: never UPDATE nor DELETE rows here.
 export const stockMovements = pgTable(
   "stock_movements",
@@ -441,6 +490,7 @@ export type Product = typeof products.$inferSelect;
 export type ProductImage = typeof productImages.$inferSelect;
 export type DiscountCampaignRow = typeof discountCampaigns.$inferSelect;
 export type DiscountTargetRow = typeof discountTargets.$inferSelect;
+export type SitePopupRow = typeof sitePopups.$inferSelect;
 export type StockMovement = typeof stockMovements.$inferSelect;
 export type CashCategory = typeof cashCategories.$inferSelect;
 export type CashMovement = typeof cashMovements.$inferSelect;

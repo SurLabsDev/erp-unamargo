@@ -1,5 +1,7 @@
 /**
- * Fotos de producto en Supabase Storage, bucket `productos`.
+ * Imagenes en Supabase Storage, bucket `productos`: las fotos de producto (una
+ * carpeta por SKU) y las imagenes de los pop-ups de la web (bajo `popups/`).
+ * Comparten bucket a proposito: ver DECISIONS.md (27/10/2026).
  *
  * Sin `@supabase/supabase-js`: son tres llamadas HTTP y la regla 6 del
  * AGENTS.md pide no sumar dependencias sin justificacion. La secret key saltea
@@ -9,6 +11,11 @@
 import { randomUUID } from "node:crypto";
 
 const BUCKET = "productos";
+
+/** Carpeta de las imagenes de pop-ups dentro del bucket. En minusculas: una
+ * carpeta de producto sale de un SKU, que siempre va en mayusculas, asi que las
+ * dos no pueden pisarse (y el uuid del nombre ya lo garantizaria igual). */
+const POPUPS_FOLDER = "popups";
 
 export type StorageResult =
   { ok: true; path: string } | { ok: false; error: string };
@@ -26,7 +33,7 @@ export function storageConfigured(): boolean {
   return config() !== null;
 }
 
-/** URL publica y estable de una foto ya subida. */
+/** URL publica y estable de una imagen ya subida. */
 export function publicImageUrl(path: string): string {
   const cfg = config();
   if (!cfg) return "";
@@ -34,15 +41,14 @@ export function publicImageUrl(path: string): string {
 }
 
 /**
- * Sube los bytes y devuelve la ruta guardada.
+ * Sube los bytes a `<folder>/<uuid>.<ext>` y devuelve la ruta guardada.
  * El nombre lleva un uuid y jamas se reutiliza (ver el comentario de
  * `productImages` en el schema: el CDN de Supabase cachea las URLs publicas).
  */
-export async function uploadProductImage(input: {
-  sku: string;
-  bytes: ArrayBuffer;
-  contentType: string;
-}): Promise<StorageResult> {
+async function uploadImage(
+  folder: string,
+  input: { bytes: ArrayBuffer; contentType: string },
+): Promise<StorageResult> {
   const cfg = config();
   if (!cfg)
     return {
@@ -56,10 +62,7 @@ export async function uploadProductImage(input: {
       : input.contentType === "image/jpeg"
         ? "jpg"
         : "webp";
-  // El SKU solo da legibilidad al navegar el bucket; la unicidad la da el uuid.
-  const carpeta =
-    input.sku.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 40) || "sin-sku";
-  const path = `${carpeta}/${randomUUID()}.${ext}`;
+  const path = `${folder}/${randomUUID()}.${ext}`;
 
   const res = await fetch(`${cfg.url}/storage/v1/object/${BUCKET}/${path}`, {
     method: "POST",
@@ -79,9 +82,30 @@ export async function uploadProductImage(input: {
   return { ok: true, path };
 }
 
-/** Borra el objeto. Si falla, el llamador decide: dejar la fila huerfana es
- * peor que dejar un archivo huerfano. */
-export async function deleteProductImage(path: string): Promise<boolean> {
+/** Foto de producto, en la carpeta de su SKU. */
+export async function uploadProductImage(input: {
+  sku: string;
+  bytes: ArrayBuffer;
+  contentType: string;
+}): Promise<StorageResult> {
+  // El SKU solo da legibilidad al navegar el bucket; la unicidad la da el uuid.
+  const carpeta =
+    input.sku.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 40) || "sin-sku";
+  return uploadImage(carpeta, input);
+}
+
+/** Imagen de un pop-up de la web, bajo `popups/`. */
+export async function uploadPopupImage(input: {
+  bytes: ArrayBuffer;
+  contentType: string;
+}): Promise<StorageResult> {
+  return uploadImage(POPUPS_FOLDER, input);
+}
+
+/** Borra el objeto, sea foto de producto o imagen de pop-up. Si falla, el
+ * llamador decide: dejar la fila huerfana es peor que dejar un archivo
+ * huerfano. */
+export async function deleteImage(path: string): Promise<boolean> {
   const cfg = config();
   if (!cfg) return false;
   const res = await fetch(`${cfg.url}/storage/v1/object/${BUCKET}/${path}`, {
