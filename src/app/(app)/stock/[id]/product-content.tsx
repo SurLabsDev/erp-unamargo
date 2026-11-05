@@ -90,8 +90,9 @@ export function ProductContent(props: {
       <CardHeader>
         <CardTitle className="text-base">Ficha para la web</CardTitle>
         <CardDescription>
-          Precio, descripción y clasificación. No afecta el stock ni el módulo
-          Dinero: el precio se publica, no registra ventas.
+          Precio, descripción, clasificación y la marca &ldquo;Más vendido&rdquo;.
+          No afecta el stock ni el módulo Dinero: el precio se publica, no
+          registra ventas.
         </CardDescription>
       </CardHeader>
       <CardContent>

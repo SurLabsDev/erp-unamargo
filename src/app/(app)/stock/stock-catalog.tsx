@@ -133,10 +133,14 @@ export function StockCatalog(props: {
         columnHelper.accessor("name", {
           header: "Nombre",
           cell: (ctx) => (
-            // La marca va pegada al nombre, igual que "Stock bajo" al stock:
+            // La marca va con el nombre, igual que "Stock bajo" con el stock:
             // dice algo del producto y no merece una columna propia. En
             // `outline` y no en el acento, que es para acciones (design.md §2).
-            <div className="flex items-center gap-2">
+            // ABAJO del nombre y no al costado: las celdas no cortan linea, y
+            // al costado sumaba el ancho de la marca a la columna mas ancha de
+            // la tabla, que en desktop se corria de costado y escondia
+            // Acciones. Abajo el ancho lo sigue mandando el nombre.
+            <div className="flex flex-col items-start gap-1">
               <span
                 className={
                   ctx.row.original.isActive ? "" : "text-muted-foreground"

@@ -152,7 +152,7 @@ El seed imprime **una única vez** la contraseña temporal del admin inicial: gu
 - [ ] Registrar un ingreso y un egreso; el panel de Dinero muestra los 5 números.
 - [ ] Exportar el CSV y abrirlo en Excel (acentos y montos correctos).
 - [ ] Bajar un producto por debajo del mínimo → llega el email de alerta (o el evento queda `skipped` si no hay Resend).
-- [ ] `curl https://<instancia>/api/public/v1/stock` responde 200 con los productos activos, cada uno con `featured`. Un 500 acá es la migración 0010 sin aplicar.
+- [ ] `curl https://<instancia>/api/public/v1/stock` responde 200 con los productos activos, cada uno con `featured`. Un 500 acá es una migración pendiente (en `un-amargo`: la 0008, la 0009 o la 0010, que van en ese orden).
 - [ ] `curl https://<instancia>/api/public/v1/popup` responde 200 (`"popup": null` si no hay ninguno en vivo). Un 500 acá es la migración sin aplicar.
 - [ ] Un usuario operador NO ve Importar/Configuración y no puede anular movimientos de dinero.
 - [ ] Borrar el producto de prueba no existe como opción: desactivarlo (correcto — el historial se conserva).
@@ -265,7 +265,7 @@ Para probar el runner sin tocar la instancia del cliente: un Postgres descartabl
 9. Anular un egreso (solo admin, con motivo): sale de los totales y del export, queda tachado con "Ver anulados".
 10. Exportar CSV del período y abrirlo en Excel es-UY.
 11. Importar un CSV con filas válidas e inválidas: la preview marca cada una; re-importar el mismo archivo rechaza todo por "ya existe".
-12. `curl` a `/api/public/v1/stock` sin cookies: 200, solo `sku/name/stock/in_stock`, headers de cache y CORS; POST → 405.
+12. `curl` a `/api/public/v1/stock` sin cookies: 200 con los campos públicos (`sku`, `name`, `stock`, `in_stock`, `slug`, `price`, `price_final`, `discount`, `description`, `category`, `subtype`, `trait`, `images`, `featured`) y nada interno (ids, mínimos, movimientos, dinero), headers de cache y CORS; POST → 405.
 13. Operador: puede registrar stock y dinero; no ve Anular, Importar ni Configuración; forzar una action de admin devuelve error en español.
 14. Todo lo anterior desde un celular (375px): tablas scrollean dentro de su contenedor, formularios usables.
 
