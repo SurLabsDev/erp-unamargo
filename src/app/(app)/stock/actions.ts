@@ -31,6 +31,7 @@ import { ETIQUETA_PANEL } from "../panel-cache";
 import {
   MAX_ACTIVE_PRODUCTS,
   computeAdjustmentDelta,
+  featuredFlagSchema,
   movementInputSchema,
   productCreateSchema,
   productUpdateSchema,
@@ -669,12 +670,16 @@ const fichaSchema = z.object({
     .refine((v) => v === null || z.uuid().safeParse(v).success, {
       error: "El valor de clasificación elegido no es válido.",
     }),
+  // "Más vendido". Strict on purpose: only "1" or nothing (see
+  // `featuredFlagSchema` for why anything else is refused).
+  isFeatured: featuredFlagSchema,
 });
 
 /**
- * Precio, descripción y clasificación: lo que consume la web del cliente.
- * NO toca stock ni dinero. El precio es de exhibición: el módulo Dinero
- * registra movimientos de caja, no ventas por producto.
+ * Precio, descripción, clasificación y la marca de "Más vendido": lo que
+ * consume la web del cliente. NO toca stock ni dinero. El precio es de
+ * exhibición: el módulo Dinero registra movimientos de caja, no ventas por
+ * producto.
  */
 export async function updateProductContentAction(
   productId: string,
@@ -686,6 +691,8 @@ export async function updateProductContentAction(
       price: formData.get("price") ?? "",
       description: formData.get("description") ?? "",
       traitId: formData.get("traitId") ?? "",
+      // An unticked checkbox is not in the FormData at all: "" = not featured.
+      isFeatured: formData.get("isFeatured") ?? "",
     });
     if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
     const clasif = clasificacionSchema.safeParse({
@@ -740,6 +747,7 @@ export async function updateProductContentAction(
           categoryId: clasif.data.categoryId,
           subtypeId: clasif.data.subtypeId,
           traitId: parsed.data.traitId,
+          isFeatured: parsed.data.isFeatured,
           updatedAt: new Date(),
         })
         .where(eq(products.id, productId));

@@ -115,6 +115,7 @@ export default async function ProductDetailPage(
         categoryId={product.categoryId}
         subtypeId={product.subtypeId}
         traitId={product.traitId}
+        isFeatured={product.isFeatured}
         slug={product.slug}
         currencyCode={settings.currencyCode}
         opciones={opciones}

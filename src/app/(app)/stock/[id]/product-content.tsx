@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Card,
   CardContent,
@@ -36,6 +37,7 @@ export function ProductContent(props: {
   categoryId: string | null;
   subtypeId: string | null;
   traitId: string | null;
+  isFeatured: boolean;
   slug: string | null;
   currencyCode: string;
   opciones: OpcionClasificacion[];
@@ -170,6 +172,30 @@ export function ProductContent(props: {
               placeholder="Lo que va a leer alguien en la web antes de escribir por WhatsApp."
               disabled={!props.puedeEditar}
             />
+          </div>
+
+          {/* La etiqueta va al costado y no arriba como en los demas campos:
+              es la convencion de un checkbox. `value="1"` es lo unico que
+              acepta `featuredFlagSchema` del lado del servidor. */}
+          <div className="grid gap-2">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="ficha-mas-vendido"
+                name="isFeatured"
+                value="1"
+                defaultChecked={props.isFeatured}
+                disabled={!props.puedeEditar}
+                aria-describedby="ficha-mas-vendido-ayuda"
+              />
+              <Label htmlFor="ficha-mas-vendido">Más vendido</Label>
+            </div>
+            <p
+              id="ficha-mas-vendido-ayuda"
+              className="pl-6 text-xs text-muted-foreground"
+            >
+              Aparece primero en la tienda de la web, con la etiqueta
+              &ldquo;Más vendido&rdquo;.
+            </p>
           </div>
 
           {props.slug ? (

@@ -189,6 +189,12 @@ export const products = pgTable(
     // Se genera del nombre al crear y NO cambia al renombrar: si cambiara, cada
     // link publicado de ese producto se rompe (misma regla que las categorias).
     slug: text("slug").unique(),
+    // "Más vendido" on the client's site: a featured product is listed first
+    // in the store, with that label. DISPLAY only, like `price`. Set by hand in
+    // the product's ficha and never computed from sales: there is too little
+    // sales history to rank anything, and the client wants to choose. No cap on
+    // how many (DECISIONS.md 2026-11-05).
+    isFeatured: boolean("is_featured").notNull().default(false),
     lowStockAlertedAt: timestamp("low_stock_alerted_at", {
       withTimezone: true,
     }), // alert cycle state (PROMPT_ERP.md §8)

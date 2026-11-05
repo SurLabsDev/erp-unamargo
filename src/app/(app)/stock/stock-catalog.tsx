@@ -133,13 +133,21 @@ export function StockCatalog(props: {
         columnHelper.accessor("name", {
           header: "Nombre",
           cell: (ctx) => (
-            <span
-              className={
-                ctx.row.original.isActive ? "" : "text-muted-foreground"
-              }
-            >
-              {ctx.row.original.name}
-            </span>
+            // La marca va pegada al nombre, igual que "Stock bajo" al stock:
+            // dice algo del producto y no merece una columna propia. En
+            // `outline` y no en el acento, que es para acciones (design.md §2).
+            <div className="flex items-center gap-2">
+              <span
+                className={
+                  ctx.row.original.isActive ? "" : "text-muted-foreground"
+                }
+              >
+                {ctx.row.original.name}
+              </span>
+              {ctx.row.original.isFeatured ? (
+                <Badge variant="outline">Más vendido</Badge>
+              ) : null}
+            </div>
           ),
         }),
         columnHelper.accessor("currentStock", {

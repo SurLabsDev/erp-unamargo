@@ -63,6 +63,19 @@ export const productUpdateSchema = z.object({
 });
 
 /**
+ * The "Más vendido" checkbox of the product's ficha (`product-content.tsx`).
+ * A ticked checkbox sends "1"; an unticked one is left out of the FormData
+ * entirely, which the action reads as "". Those two are the only values the
+ * form can produce, so anything else is refused instead of being read as "not
+ * featured": it means the form and this rule drifted apart (Radix's default
+ * value is "on", for one), and saving `false` in silence would quietly take
+ * the product off the front of the store.
+ */
+export const featuredFlagSchema = z
+  .enum(["", "1"], { error: "El valor de “Más vendido” no es válido." })
+  .transform((value) => value === "1");
+
+/**
  * Movement input. UI types map to ledger rows as:
  *  - entrada → type 'in',  delta = +quantity
  *  - salida  → type 'out', delta = -quantity

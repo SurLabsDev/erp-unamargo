@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   computeAdjustmentDelta,
+  featuredFlagSchema,
   isLowStock,
   movementInputSchema,
   productCreateSchema,
@@ -46,6 +47,33 @@ describe("productCreateSchema", () => {
         initialStock: 2.5,
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("featuredFlagSchema", () => {
+  it("reads the only two values the ficha form can send", () => {
+    expect(featuredFlagSchema.parse("1")).toBe(true); // ticked
+    // Unticked: the checkbox is not in the FormData, and the action sends "".
+    expect(featuredFlagSchema.parse("")).toBe(false);
+  });
+
+  it("refuses anything else instead of saving it as not featured", () => {
+    const unexpected = [
+      "on", // what Radix sends when the checkbox has no explicit value
+      "true",
+      "0",
+      " 1",
+      "1 ",
+      null,
+      new File([], "x"),
+    ];
+    for (const value of unexpected) {
+      const result = featuredFlagSchema.safeParse(value);
+      expect(result.success, String(value)).toBe(false);
+      expect(result.error?.issues[0]?.message).toBe(
+        "El valor de “Más vendido” no es válido.",
+      );
+    }
   });
 });
 

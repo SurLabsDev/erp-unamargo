@@ -71,6 +71,13 @@
       "when": 1793101538109,
       "tag": "0009_site_popups",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793888471726,
+      "tag": "0010_products_is_featured",
+      "breakpoints": true
     }
   ]
 }

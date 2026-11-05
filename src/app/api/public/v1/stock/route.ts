@@ -49,6 +49,7 @@ export async function GET(): Promise<Response> {
         subtypeSlug: productSubtypes.slug,
         traitName: productTraits.name,
         traitSlug: productTraits.slug,
+        isFeatured: products.isFeatured,
       })
       .from(products)
       .leftJoin(
@@ -139,6 +140,11 @@ export async function GET(): Promise<Response> {
             ? { name: row.traitName, slug: row.traitSlug }
             : null,
           images: porSku.get(row.sku) ?? [],
+          // Added 2026-11-05, additive like `price_final` and `discount`:
+          // always a boolean, false by default. The client sets it by hand in
+          // the ficha; it is never computed from sales. The site lists these
+          // first, labelled "Más vendido"; `items` keeps its SKU order anyway.
+          featured: row.isFeatured,
         };
       }),
     },
