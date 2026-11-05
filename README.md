@@ -12,8 +12,8 @@ Es una **base reutilizable**: una instancia (deploy en Vercel + base Postgres pr
 | **Dinero** | Ingresos/egresos por categoría, balance por período (saldo al inicio/cierre), anulación soft por admin, export CSV compatible con Excel es-UY |
 | **Alertas** | Un email por evento de quiebre (`stock ≤ mínimo`), rearme automático al reponer, auditoría en `alert_events`; `mínimo = 0` = sin control |
 | **Importación** | Carga inicial por CSV con plantilla oficial, preview fila por fila, solo crea (nunca actualiza) |
-| **Catálogo** | Categorías y subtipos administrables por el cliente (mate → de calabaza), precio, descripción y fotos por producto. Las fotos se achican en el navegador y viven en Supabase Storage |
-| **API pública** | `GET /api/public/v1/stock` — catálogo con stock, precio, clasificación y fotos para la web del cliente. `GET /api/public/v1/popup` — el pop-up que la web tiene que mostrar, o `null`. Las dos de solo lectura, con cache CDN y contrato solo aditivo |
+| **Catálogo** | Categorías y subtipos administrables por el cliente (mate → de calabaza), precio, descripción y fotos por producto, y la marca "Más vendido" que la web muestra primero. Las fotos se achican en el navegador y viven en Supabase Storage |
+| **API pública** | `GET /api/public/v1/stock` — catálogo con stock, precio, clasificación, fotos y la marca de más vendido para la web del cliente. `GET /api/public/v1/popup` — el pop-up que la web tiene que mostrar, o `null`. Las dos de solo lectura, con cache CDN y contrato solo aditivo |
 | **Descuentos** | Campañas con vigencia por fechas más interruptor, aplicables a productos, subtipos o categorías. Gana la regla más puntual. Solo porcentaje |
 | **Pop-ups** | Avisos para la web pública: título, texto, imagen y botón (link `https://…` o `#sección`), con vigencia opcional por fechas más interruptor. Se muestra uno a la vez, el en vivo editado más recientemente, y cada visitante lo ve una vez hasta que se edite. Solo administración |
 | **Usuarios** | Hasta 5 activos, roles administración / operación-consulta, contraseñas temporales mostradas una única vez |
@@ -152,7 +152,7 @@ El seed imprime **una única vez** la contraseña temporal del admin inicial: gu
 - [ ] Registrar un ingreso y un egreso; el panel de Dinero muestra los 5 números.
 - [ ] Exportar el CSV y abrirlo en Excel (acentos y montos correctos).
 - [ ] Bajar un producto por debajo del mínimo → llega el email de alerta (o el evento queda `skipped` si no hay Resend).
-- [ ] `curl https://<instancia>/api/public/v1/stock` responde 200 con los productos activos.
+- [ ] `curl https://<instancia>/api/public/v1/stock` responde 200 con los productos activos, cada uno con `featured`. Un 500 acá es la migración 0010 sin aplicar.
 - [ ] `curl https://<instancia>/api/public/v1/popup` responde 200 (`"popup": null` si no hay ninguno en vivo). Un 500 acá es la migración sin aplicar.
 - [ ] Un usuario operador NO ve Importar/Configuración y no puede anular movimientos de dinero.
 - [ ] Borrar el producto de prueba no existe como opción: desactivarlo (correcto — el historial se conserva).
