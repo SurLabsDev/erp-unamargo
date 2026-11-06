@@ -12,18 +12,34 @@ import "@/lib/zod-locale";
 
 /**
  * At most 20 photos. Every visitor of the home page downloads all of them, and
- * the site draws the strip twice so the loop closes without a jump, so each
- * photo costs twice in the page. 20 is more than three times the six the site
- * runs today: room to rotate seasons without turning the strip into the
- * heaviest thing on the home page. A longer strip also takes so long to come
- * around that nobody sees the photos at the end, so more would not show more.
+ * 20 is more than three times the six the site runs today: room to rotate
+ * seasons without turning the strip into the heaviest thing on the home page.
+ * The site draws the strip twice so the loop closes without a jump, but the
+ * second copy reuses the same URLs, so the browser fetches each photo once:
+ * the copy doubles what is on screen, not what is downloaded. And a longer
+ * strip takes so long to come around that nobody sees the photos at the end,
+ * so more would not show more.
  */
 export const MAX_STRIP_PHOTOS = 20;
+
+/**
+ * Fewer than this and the strip leaves an empty band on a wide screen, so the
+ * admin screen recommends it (it is advice, not a rule: one photo is valid).
+ * The site loops by drawing the set twice and sliding it half its width, which
+ * only covers the screen when one set is at least as wide as the screen. At
+ * its tallest the site draws a photo 420px high, so a vertical 4:5 one is
+ * 336px wide plus a 10px gap: six of them cover a 1920px screen, five do not.
+ */
+export const MIN_SUGGESTED_STRIP_PHOTOS = 6;
 
 /** The site's `alt`: a short description, not a caption. */
 export const MAX_ALT_LENGTH = 120;
 
 export const STRIP_LIMIT_ERROR = `La tira admite hasta ${MAX_STRIP_PHOTOS} fotos. Quitá una para subir otra.`;
+
+/** Shared with the screen: there it means the row is about to disappear (the
+ *  action refreshes the list), so the message cannot be shown inside it. */
+export const STRIP_NOT_FOUND_ERROR = "La foto no existe.";
 
 /** Whether one more photo fits. Checked again under a lock on every upload. */
 export function canAddStripPhoto(currentCount: number): boolean {

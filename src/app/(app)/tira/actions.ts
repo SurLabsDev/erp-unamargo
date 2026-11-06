@@ -1,7 +1,7 @@
 "use server";
 
 import { count, eq, sql } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
+import { refresh, revalidatePath } from "next/cache";
 import { z } from "zod";
 import "@/lib/zod-locale";
 import { ForbiddenError, requireRole } from "@/lib/auth-helpers";
@@ -13,6 +13,7 @@ import { STRIP_PHOTOS_LOCK } from "@/lib/db/locks";
 import { siteStripPhotos } from "@/lib/db/schema";
 import {
   STRIP_LIMIT_ERROR,
+  STRIP_NOT_FOUND_ERROR,
   canAddStripPhoto,
   isStripMoveDirection,
   moveStripPhoto,
@@ -30,8 +31,6 @@ import {
 export type ActionResult =
   | { ok: true; message: string }
   | { ok: false; error: string };
-
-const NOT_FOUND = "La foto no existe.";
 
 function firstIssue(error: z.ZodError): string {
   return error.issues[0]?.message ?? "Datos inválidos.";
@@ -51,6 +50,16 @@ function handleError(error: unknown): ActionResult {
 async function revalidateStrip() {
   revalidatePath("/tira");
   await avisarALaWeb();
+}
+
+/** Para los fallos que solo pasan porque la pantalla quedo vieja: otra
+ *  pestaña u otro admin quito, movio o subio una foto. Sin esto la lista vieja
+ *  sigue ahi y cada reintento sobre esa foto falla igual hasta recargar a
+ *  mano. `refresh()` vuelve a dibujar la pantalla que pidio en la misma
+ *  respuesta, sin invalidar nada. No es `revalidateStrip` a proposito: no se
+ *  escribio nada, asi que tampoco hay nada que la web tenga que ir a buscar. */
+function refreshStaleScreen() {
+  refresh();
 }
 
 /** El id llega del cliente: sin esto, uno mal formado viajaria a Postgres y
@@ -117,11 +126,15 @@ export async function uploadStripPhotoAction(
     }
 
     // Antes de subir nada: con la tira llena, el archivo solo se subiria para
-    // borrarlo. El conteo que manda es el de abajo, con candado.
+    // borrarlo. El conteo que manda es el de abajo, con candado. Si la
+    // pantalla dejaba subir, es que la llenaron desde otro lado.
     const [{ total }] = await db
       .select({ total: count() })
       .from(siteStripPhotos);
-    if (!canAddStripPhoto(total)) return { ok: false, error: STRIP_LIMIT_ERROR };
+    if (!canAddStripPhoto(total)) {
+      refreshStaleScreen();
+      return { ok: false, error: STRIP_LIMIT_ERROR };
+    }
 
     // Con el tipo LEIDO de los bytes, no el declarado: un navegador que no
     // sabe hacer WebP puede mandar un PNG con la etiqueta de WebP.
@@ -152,6 +165,7 @@ export async function uploadStripPhotoAction(
       // tirara un error no se borra, porque un COMMIT que llego a la base pero
       // no volvio dejaria la fila apuntando a nada: una foto rota en la web.
       await deleteImageQuietly(upload.path);
+      refreshStaleScreen();
       return { ok: false, error: STRIP_LIMIT_ERROR };
     }
 
@@ -164,8 +178,8 @@ export async function uploadStripPhotoAction(
 
 // --- Orden -------------------------------------------------------------------
 
-/** Sube o baja una foto un lugar. Se mueve de a uno y no con un numero, como
- *  los estantes de la tienda: nadie piensa "esta va en el 7". */
+/** Mueve una foto un lugar antes o despues. Se mueve de a uno y no con un
+ *  numero, como los estantes de la tienda: nadie piensa "esta va en el 7". */
 export async function moveStripPhotoAction(
   photoId: string,
   direction: StripMoveDirection,
@@ -173,13 +187,13 @@ export async function moveStripPhotoAction(
   try {
     await requireRole("admin");
     const id = parseId(photoId);
-    if (!id) return { ok: false, error: NOT_FOUND };
+    if (!id) return { ok: false, error: STRIP_NOT_FOUND_ERROR };
     // A server action is a public POST: the declared type is not a guarantee.
     if (!isStripMoveDirection(direction)) {
       return { ok: false, error: "Datos inválidos." };
     }
 
-    const result = await db.transaction(async (tx): Promise<ActionResult> => {
+    const move = await db.transaction(async (tx) => {
       await tx.execute(sql`select pg_advisory_xact_lock(${STRIP_PHOTOS_LOCK})`);
       const rows = await tx
         .select({
@@ -189,30 +203,37 @@ export async function moveStripPhotoAction(
         })
         .from(siteStripPhotos);
 
-      const move = moveStripPhoto(rows, id, direction);
-      if (!move.ok) {
-        if (move.reason === "not-found") return { ok: false, error: NOT_FOUND };
-        return {
-          ok: false,
-          error:
-            direction === "up"
-              ? "La foto ya es la primera."
-              : "La foto ya es la última.",
-        };
-      }
+      const planned = moveStripPhoto(rows, id, direction);
+      if (!planned.ok) return planned;
 
       const now = new Date();
-      for (const change of move.changes) {
+      for (const change of planned.changes) {
         await tx
           .update(siteStripPhotos)
           .set({ sortOrder: change.sortOrder, updatedAt: now })
           .where(eq(siteStripPhotos.id, change.id));
       }
-      return { ok: true, message: "Orden actualizado." };
+      return planned;
     });
 
-    if (result.ok) await revalidateStrip();
-    return result;
+    if (!move.ok) {
+      // Desde esta pantalla las dos cosas pasan solo si quedo vieja: otra
+      // pestaña u otro admin quito la foto, o ya la movio hasta el borde.
+      refreshStaleScreen();
+      if (move.reason === "not-found") {
+        return { ok: false, error: STRIP_NOT_FOUND_ERROR };
+      }
+      return {
+        ok: false,
+        error:
+          direction === "up"
+            ? "La foto ya es la primera."
+            : "La foto ya es la última.",
+      };
+    }
+
+    await revalidateStrip();
+    return { ok: true, message: "Orden actualizado." };
   } catch (error) {
     return handleError(error);
   }
@@ -227,7 +248,7 @@ export async function updateStripPhotoAltAction(
   try {
     await requireRole("admin");
     const id = parseId(photoId);
-    if (!id) return { ok: false, error: NOT_FOUND };
+    if (!id) return { ok: false, error: STRIP_NOT_FOUND_ERROR };
     const parsed = stripAltSchema.safeParse(formData.get("alt") ?? "");
     if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
 
@@ -236,7 +257,11 @@ export async function updateStripPhotoAltAction(
       .set({ alt: parsed.data, updatedAt: new Date() })
       .where(eq(siteStripPhotos.id, id))
       .returning({ id: siteStripPhotos.id });
-    if (!updated) return { ok: false, error: NOT_FOUND };
+    if (!updated) {
+      // La quitaron desde otra pestaña u otro admin.
+      refreshStaleScreen();
+      return { ok: false, error: STRIP_NOT_FOUND_ERROR };
+    }
 
     await revalidateStrip();
     return {
@@ -257,7 +282,7 @@ export async function deleteStripPhotoAction(
   try {
     await requireRole("admin");
     const id = parseId(photoId);
-    if (!id) return { ok: false, error: NOT_FOUND };
+    if (!id) return { ok: false, error: STRIP_NOT_FOUND_ERROR };
 
     // Primero la fila, despues el objeto, igual que las fotos de producto: si
     // el borrado del archivo falla queda un huerfano en el bucket (invisible y
@@ -267,7 +292,11 @@ export async function deleteStripPhotoAction(
       .delete(siteStripPhotos)
       .where(eq(siteStripPhotos.id, id))
       .returning({ imagePath: siteStripPhotos.imagePath });
-    if (!removed) return { ok: false, error: NOT_FOUND };
+    if (!removed) {
+      // Ya la habia quitado otra pestaña u otro admin.
+      refreshStaleScreen();
+      return { ok: false, error: STRIP_NOT_FOUND_ERROR };
+    }
 
     await deleteImageQuietly(removed.imagePath);
 

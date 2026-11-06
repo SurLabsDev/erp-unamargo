@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_ALT_LENGTH,
   MAX_STRIP_PHOTOS,
+  MIN_SUGGESTED_STRIP_PHOTOS,
   STRIP_LIMIT_ERROR,
   canAddStripPhoto,
   compareStripPhotos,
@@ -82,6 +83,11 @@ describe("limite de fotos", () => {
   it("el mensaje dice el limite y que hacer", () => {
     expect(STRIP_LIMIT_ERROR).toContain(`${MAX_STRIP_PHOTOS} fotos`);
     expect(STRIP_LIMIT_ERROR).toContain("Quitá una");
+  });
+
+  it("el minimo sugerido es un consejo que siempre se puede cumplir", () => {
+    expect(MIN_SUGGESTED_STRIP_PHOTOS).toBeGreaterThan(1);
+    expect(canAddStripPhoto(MIN_SUGGESTED_STRIP_PHOTOS - 1)).toBe(true);
   });
 });
 
