@@ -1,6 +1,6 @@
 # surlabs-erp
 
-Sistema de gestión operativo para pymes, por **Surlabs**: control de stock de un depósito, balance operativo compartido, alertas de stock bajo por email, importación inicial por CSV, pop-ups para la web del cliente y una API pública de solo lectura con el stock y el pop-up vigente.
+Sistema de gestión operativo para pymes, por **Surlabs**: control de stock de un depósito, balance operativo compartido, alertas de stock bajo por email, importación inicial por CSV, pop-ups y la tira de fotos para la web del cliente, y una API pública de solo lectura con el stock, el pop-up vigente y las fotos de la tira.
 
 Es una **base reutilizable**: una instancia (deploy en Vercel + base Postgres propia) por cliente, parametrizada por `config/instance.json` + seed. **Sin multi-tenancy.** Primera instancia: Unamargo (Uruguay).
 
@@ -13,9 +13,10 @@ Es una **base reutilizable**: una instancia (deploy en Vercel + base Postgres pr
 | **Alertas** | Un email por evento de quiebre (`stock ≤ mínimo`), rearme automático al reponer, auditoría en `alert_events`; `mínimo = 0` = sin control |
 | **Importación** | Carga inicial por CSV con plantilla oficial, preview fila por fila, solo crea (nunca actualiza) |
 | **Catálogo** | Categorías y subtipos administrables por el cliente (mate → de calabaza), precio, descripción y fotos por producto, y la marca "Más vendido" que la web muestra primero. Las fotos se achican en el navegador y viven en Supabase Storage |
-| **API pública** | `GET /api/public/v1/stock` — catálogo con stock, precio, clasificación, fotos y la marca de más vendido para la web del cliente. `GET /api/public/v1/popup` — el pop-up que la web tiene que mostrar, o `null`. Las dos de solo lectura, con cache CDN y contrato solo aditivo |
+| **API pública** | `GET /api/public/v1/stock` — catálogo con stock, precio, clasificación, fotos y la marca de más vendido para la web del cliente. `GET /api/public/v1/popup` — el pop-up que la web tiene que mostrar, o `null`. `GET /api/public/v1/tira` — las fotos de la tira, en orden, con su ancho, alto y descripción. Las tres de solo lectura, con cache CDN y contrato solo aditivo |
 | **Descuentos** | Campañas con vigencia por fechas más interruptor, aplicables a productos, subtipos o categorías. Gana la regla más puntual. Solo porcentaje |
 | **Pop-ups** | Avisos para la web pública: título, texto, imagen y botón (link `https://…` o `#sección`), con vigencia opcional por fechas más interruptor. Se muestra uno a la vez, el en vivo editado más recientemente, y cada visitante lo ve una vez hasta que se edite. Solo administración |
+| **Tira de fotos** | Las fotos que corren debajo del hero de la web: hasta 20, en el orden que elija el cliente (se mueven de a un lugar), cada una con su proporción y una descripción corta opcional. Se achican en el navegador y viven en Supabase Storage. Solo administración |
 | **Usuarios** | Hasta 5 activos, roles administración / operación-consulta, contraseñas temporales mostradas una única vez |
 
 ## Stack
@@ -83,7 +84,7 @@ Credenciales demo (solo desarrollo; impresas también por el seed):
 | `APP_URL` | Sí | URL pública de la instancia (links en los emails de alerta) |
 | `RESEND_API_KEY` | No | API key de Resend. Sin ella, los emails se loguean a consola y los eventos quedan `skipped` — la app funciona igual |
 | `EMAIL_FROM` | Si hay Resend | Remitente, p. ej. `ERP Unamargo <erp@dominio-verificado.uy>`. El dominio DEBE estar verificado en Resend |
-| `SUPABASE_URL` | Si hay fotos | URL del proyecto Supabase. Sin ella la galería de fotos y la imagen de los pop-ups quedan ocultas y el resto funciona igual |
+| `SUPABASE_URL` | Si hay fotos | URL del proyecto Supabase. Sin ella la galería de fotos, la imagen de los pop-ups y la subida de la tira de fotos quedan ocultas y el resto funciona igual |
 | `SUPABASE_SECRET_KEY` | Si hay fotos | Project Settings → API Keys → la **secret** (`sb_secret_…`). Saltea RLS: va SOLO en el servidor, nunca con prefijo `NEXT_PUBLIC_`. Requiere un bucket `productos` público (ver `scripts/supabase-hardening.sql`) |
 
 Ver [.env.example](.env.example) comentado.
@@ -154,6 +155,7 @@ El seed imprime **una única vez** la contraseña temporal del admin inicial: gu
 - [ ] Bajar un producto por debajo del mínimo → llega el email de alerta (o el evento queda `skipped` si no hay Resend).
 - [ ] `curl https://<instancia>/api/public/v1/stock` responde 200 con los productos activos, cada uno con `featured`. Un 500 acá es una migración pendiente (en `un-amargo`: la 0008, la 0009 o la 0010, que van en ese orden).
 - [ ] `curl https://<instancia>/api/public/v1/popup` responde 200 (`"popup": null` si no hay ninguno en vivo). Un 500 acá es la migración sin aplicar.
+- [ ] `curl https://<instancia>/api/public/v1/tira` responde 200 (`"photos": []` si no hay ninguna). Un 500 acá es la migración `0011` sin aplicar (en `un-amargo` va después de la 0008, la 0009 y la 0010, en ese orden).
 - [ ] Un usuario operador NO ve Importar/Configuración y no puede anular movimientos de dinero.
 - [ ] Borrar el producto de prueba no existe como opción: desactivarlo (correcto — el historial se conserva).
 - [ ] `npm run db:check` contra la base productiva pasa.
@@ -268,6 +270,7 @@ Para probar el runner sin tocar la instancia del cliente: un Postgres descartabl
 12. `curl` a `/api/public/v1/stock` sin cookies: 200 con los campos públicos (`sku`, `name`, `stock`, `in_stock`, `slug`, `price`, `price_final`, `discount`, `description`, `category`, `subtype`, `trait`, `images`, `featured`) y nada interno (ids, mínimos, movimientos, dinero), headers de cache y CORS; POST → 405.
 13. Operador: puede registrar stock y dinero; no ve Anular, Importar ni Configuración; forzar una action de admin devuelve error en español.
 14. Todo lo anterior desde un celular (375px): tablas scrollean dentro de su contenedor, formularios usables.
+15. Tira de fotos (admin): subir tres fotos de una vez, también desde un iPhone; moverlas, escribir y borrar una descripción, quitar una. `curl` a `/api/public/v1/tira` las devuelve en ese orden con `url`, `width`, `height` y `alt`, y nada más (ni ids ni fechas); la foto quitada ya no está, ni en la respuesta ni en el bucket. Con 20, la subida se bloquea. El operador no ve "Tira de fotos" y forzar una de sus actions devuelve error en español.
 
 ## Operación y riesgos del free tier
 
@@ -301,6 +304,6 @@ Para probar el runner sin tocar la instancia del cliente: un Postgres descartabl
 
 ## Fuera de alcance (por contrato)
 
-Carrito, pedidos, ventas online o **descuento automático de stock desde la web** (la web muestra disponibilidad; la salida se registra a mano en el ERP) · conexión bancaria, conciliación, contabilidad, impuestos o facturación electrónica · múltiples depósitos, códigos de barras, compras, proveedores, logística, lotes/vencimientos/costos · multi-moneda · WhatsApp/SMS/chatbot · multi-tenancy · construcción de la web del cliente (el ERP le da los datos por la API pública; el sitio es otro proyecto) · registro público de usuarios, recuperación de contraseña por email, 2FA · reportes/gráficos adicionales · modificación de la web del cliente (el ERP solo expone sus API públicas de solo lectura: stock y pop-up).
+Carrito, pedidos, ventas online o **descuento automático de stock desde la web** (la web muestra disponibilidad; la salida se registra a mano en el ERP) · conexión bancaria, conciliación, contabilidad, impuestos o facturación electrónica · múltiples depósitos, códigos de barras, compras, proveedores, logística, lotes/vencimientos/costos · multi-moneda · WhatsApp/SMS/chatbot · multi-tenancy · construcción de la web del cliente (el ERP le da los datos por la API pública; el sitio es otro proyecto) · registro público de usuarios, recuperación de contraseña por email, 2FA · reportes/gráficos adicionales · modificación de la web del cliente (el ERP solo expone sus API públicas de solo lectura: stock, pop-up y tira de fotos).
 
 Las ideas que surjan se anotan en [BACKLOG.md](BACKLOG.md) y se cotizan aparte.
