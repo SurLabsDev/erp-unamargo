@@ -171,7 +171,15 @@ export function StripManager(props: {
     const move = pendingMove.current;
     if (move) {
       pendingMove.current = null;
-      focusAfterMove(photos, move);
+      // Solo si el foco se perdio (el boton apretado se deshabilito mientras
+      // guardaba). Si en ese rato la persona ya fue a otro lado, por ejemplo a
+      // escribir la descripcion de otra foto, se queda donde esta: traerla de
+      // vuelta le mandaba las teclas siguientes a este boton, y un espacio
+      // movia la foto otra vez, con la web avisada.
+      const active = document.activeElement;
+      if (active === null || active === document.body) {
+        focusAfterMove(photos, move);
+      }
       return;
     }
     // Una foto que se quita con el dialogo la atiende `focusAfterRemoval`,
@@ -374,6 +382,10 @@ export function StripManager(props: {
             {photos.map((photo, index) => {
               const position = index + 1;
               const busy = moving && movingId === photo.id;
+              // Las flechas de TODAS las fotos se apagan mientras se guarda un
+              // movimiento: `move` descarta un segundo pedido hasta que
+              // termina el primero, y con las flechas prendidas ese toque se
+              // perdia sin aviso y la tira quedaba en un orden que nadie eligio.
               const moveEarlier = `Mover la foto ${position} un lugar antes`;
               const moveLater = `Mover la foto ${position} un lugar después`;
               return (
@@ -422,7 +434,7 @@ export function StripManager(props: {
                         size="icon"
                         aria-label={moveEarlier}
                         title={moveEarlier}
-                        disabled={index === 0 || busy}
+                        disabled={index === 0 || moving}
                         onClick={() => move(photo.id, index, "up")}
                       >
                         <ChevronUp className="size-4" />
@@ -434,7 +446,7 @@ export function StripManager(props: {
                         size="icon"
                         aria-label={moveLater}
                         title={moveLater}
-                        disabled={index === photos.length - 1 || busy}
+                        disabled={index === photos.length - 1 || moving}
                         onClick={() => move(photo.id, index, "down")}
                       >
                         <ChevronDown className="size-4" />
@@ -514,9 +526,17 @@ function AltForm(props: {
   // el campo la toma aca, mientras se dibuja. No con un `key` que cambie con
   // ella: eso rearmaria el formulario y se llevaria el foco del teclado.
   const [shownSaved, setShownSaved] = useState(saved);
+  // Lo que se mando con el ultimo "Guardar", tal cual estaba en el campo.
+  const [submitted, setSubmitted] = useState<string | null>(null);
   if (saved !== shownSaved) {
     setShownSaved(saved);
-    setValue(saved ?? "");
+    // El campo toma lo guardado solo si sigue diciendo lo que se mando, o lo
+    // que estaba guardado antes. Lo que se tipeo mientras viajaba el guardado
+    // se queda: pisarlo borraba palabras sin aviso, y "Guardar" quedaba
+    // apagado como si no hubiera nada nuevo.
+    if (value === submitted || value.trim() === (shownSaved ?? "")) {
+      setValue(saved ?? "");
+    }
   }
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -534,6 +554,7 @@ function AltForm(props: {
     const submitter = (event.nativeEvent as SubmitEvent).submitter;
     const fromKeyboard = submitter?.matches(":focus-visible") ?? false;
     const formData = new FormData(event.currentTarget);
+    setSubmitted(String(formData.get("alt") ?? ""));
     setSaving(true);
     setError(null);
     try {
