@@ -361,6 +361,46 @@ export const sitePopups = pgTable(
   ],
 );
 
+// Photos of the strip that runs under the hero of the client's website. DISPLAY
+// content only, like the pop-ups. The site shows them in display order
+// (`sortStripPhotos` in src/lib/domain/strip.ts: sort_order, then created_at)
+// and each one at its own proportions, so the pixel size travels with the
+// photo. Unlike pop-ups, a removed photo IS deleted: the row first, then the
+// storage object, same as product photos.
+export const siteStripPhotos = pgTable(
+  "site_strip_photos",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // Storage path in the `productos` bucket, under `tira/`. Same rule as
+    // product_images.path: a new uuid name per upload, never reused, because
+    // the storage CDN keeps serving a cached URL after the object is replaced.
+    imagePath: text("image_path").notNull().unique(),
+    // Size of the STORED image, after the in-browser resize, read from its
+    // bytes on the server (src/lib/image-size.ts), never taken from the form.
+    width: integer("width").notNull(),
+    height: integer("height").notNull(),
+    // Short description for the site's `alt`: plain text, up to 120 chars
+    // (validated in app). Null when the admin did not write one.
+    alt: text("alt"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    check(
+      "site_strip_photos_size_check",
+      sql`${t.width} > 0 and ${t.height} > 0`,
+    ),
+  ],
+);
+
 // APPEND-ONLY ledger: never UPDATE nor DELETE rows here.
 export const stockMovements = pgTable(
   "stock_movements",
@@ -497,6 +537,7 @@ export type ProductImage = typeof productImages.$inferSelect;
 export type DiscountCampaignRow = typeof discountCampaigns.$inferSelect;
 export type DiscountTargetRow = typeof discountTargets.$inferSelect;
 export type SitePopupRow = typeof sitePopups.$inferSelect;
+export type SiteStripPhotoRow = typeof siteStripPhotos.$inferSelect;
 export type StockMovement = typeof stockMovements.$inferSelect;
 export type CashCategory = typeof cashCategories.$inferSelect;
 export type CashMovement = typeof cashMovements.$inferSelect;

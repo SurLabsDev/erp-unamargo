@@ -78,6 +78,13 @@
       "when": 1793888471726,
       "tag": "0010_products_is_featured",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793968670576,
+      "tag": "0011_site_strip_photos",
+      "breakpoints": true
     }
   ]
 }

@@ -1,7 +1,8 @@
 /**
  * Imagenes en Supabase Storage, bucket `productos`: las fotos de producto (una
- * carpeta por SKU) y las imagenes de los pop-ups de la web (bajo `popups/`).
- * Comparten bucket a proposito: ver DECISIONS.md (27/10/2026).
+ * carpeta por SKU), las imagenes de los pop-ups de la web (bajo `popups/`) y
+ * las fotos de la tira de la web (bajo `tira/`). Comparten bucket a proposito:
+ * ver DECISIONS.md (27/10/2026 y 06/11/2026).
  *
  * Sin `@supabase/supabase-js`: son tres llamadas HTTP y la regla 6 del
  * AGENTS.md pide no sumar dependencias sin justificacion. La secret key saltea
@@ -16,6 +17,9 @@ const BUCKET = "productos";
  * carpeta de producto sale de un SKU, que siempre va en mayusculas, asi que las
  * dos no pueden pisarse (y el uuid del nombre ya lo garantizaria igual). */
 const POPUPS_FOLDER = "popups";
+
+/** Carpeta de las fotos de la tira de la web. Minusculas por lo mismo. */
+const STRIP_FOLDER = "tira";
 
 export type StorageResult =
   { ok: true; path: string } | { ok: false; error: string };
@@ -102,9 +106,17 @@ export async function uploadPopupImage(input: {
   return uploadImage(POPUPS_FOLDER, input);
 }
 
-/** Borra el objeto, sea foto de producto o imagen de pop-up. Si falla, el
- * llamador decide: dejar la fila huerfana es peor que dejar un archivo
- * huerfano. */
+/** Foto de la tira de la web, bajo `tira/`. */
+export async function uploadStripImage(input: {
+  bytes: ArrayBuffer;
+  contentType: string;
+}): Promise<StorageResult> {
+  return uploadImage(STRIP_FOLDER, input);
+}
+
+/** Borra el objeto, sea foto de producto, imagen de pop-up o foto de la tira.
+ * Si falla, el llamador decide: dejar la fila huerfana es peor que dejar un
+ * archivo huerfano. */
 export async function deleteImage(path: string): Promise<boolean> {
   const cfg = config();
   if (!cfg) return false;

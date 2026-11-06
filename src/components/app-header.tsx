@@ -32,6 +32,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/dinero", label: "Dinero" },
   { href: "/descuentos", label: "Descuentos", adminOnly: true },
   { href: "/popups", label: "Pop-ups", adminOnly: true },
+  { href: "/tira", label: "Tira de fotos", adminOnly: true },
   { href: "/importar", label: "Importar", adminOnly: true },
   { href: "/configuracion", label: "Configuración", adminOnly: true },
 ];
@@ -109,14 +110,18 @@ export function AppHeader(props: {
           </span>
         </Link>
 
-        {/* Desktop nav */}
+        {/* Desktop nav. px-2.5 y no px-3: con ocho secciones, desde 1280px
+            (donde aparece el nombre de usuario y la fila ya esta en su tope
+            de max-w-6xl) "Pop-ups" y "Tira de fotos" se partian en dos
+            lineas, y a 1024px sobraban 5px. Asi sobran ~30px en los dos
+            casos (medido en Chrome, con la Geist del build). */}
         <nav className="ml-6 hidden items-center gap-1 lg:flex">
           {items.map((item) => (
             <Link
               key={item.href}
               href={item.href}
               className={cn(
-                "rounded-md px-3 py-1.5 text-sm",
+                "rounded-md px-2.5 py-1.5 text-sm",
                 isActive(pathname, item.href)
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -135,7 +140,8 @@ export function AppHeader(props: {
                 {/* Desde xl y no desde lg: con siete secciones, entre 1024 y
                     ~1050px el nombre le quitaba al menu el lugar justo para
                     partir "Pop-ups" en dos lineas (medido en Chrome). El
-                    nombre sigue en el encabezado del desplegable. */}
+                    nombre sigue en el encabezado del desplegable. Con ocho
+                    entra gracias al px-2.5 del menu (ver arriba). */}
                 <span className="hidden max-w-32 truncate xl:inline">
                   {userName}
                 </span>
