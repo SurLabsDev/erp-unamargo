@@ -28,15 +28,21 @@
 
 -- ---------------------------------------------------------------------------
 -- 1. Stop future objects from being granted automatically.
+--
+--    `all`, not a list of privileges: Supabase's defaults also grant
+--    truncate, references, trigger and maintain on tables (and update on
+--    sequences). Revoking only select/insert/update/delete left every table a
+--    migration created born with those four for anon, until someone ran
+--    section 2 again. Found on 2026-11-06 on both projects as `anon=Dxtm`.
 -- ---------------------------------------------------------------------------
 alter default privileges for role postgres in schema public
-  revoke select, insert, update, delete on tables from anon, authenticated;
+  revoke all on tables from anon, authenticated;
 
 alter default privileges for role postgres in schema public
-  revoke usage, select on sequences from anon, authenticated;
+  revoke all on sequences from anon, authenticated;
 
 alter default privileges for role postgres in schema public
-  revoke execute on functions from anon, authenticated;
+  revoke all on functions from anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 -- 2. Remove the grants the existing tables already have.
@@ -55,14 +61,28 @@ revoke usage on schema public from anon, authenticated;
 --    is set to FORCE ROW LEVEL SECURITY (which we never do). Postgres roles
 --    with bypassrls are exempt too. `anon` is neither, so for `anon` these
 --    tables become empty: no policies means no rows match.
+--
+--    Every table in `public`, found at run time, not a list: the list named
+--    the 7 tables of the first migration, and the 7 that came later
+--    (discounts, categories, images, subtypes, traits, pop-ups) were left
+--    without RLS. After a migration that adds a table, run this file again.
 -- ---------------------------------------------------------------------------
-alter table public.users            enable row level security;
-alter table public.settings         enable row level security;
-alter table public.products         enable row level security;
-alter table public.stock_movements  enable row level security;
-alter table public.cash_categories  enable row level security;
-alter table public.cash_movements   enable row level security;
-alter table public.alert_events     enable row level security;
+do $$
+declare
+  t record;
+begin
+  for t in
+    select n.nspname as esquema, c.relname as tabla
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relkind in ('r', 'p')
+      and not c.relrowsecurity
+  loop
+    execute format('alter table %I.%I enable row level security', t.esquema, t.tabla);
+  end loop;
+end
+$$;
 
 -- ===========================================================================
 --  VERIFICATION. Run these after the block above and read the output.
@@ -75,7 +95,7 @@ where table_schema = 'public'
   and grantee in ('anon', 'authenticated')
 order by table_name, grantee;
 
--- (b) Must list the 7 tables with rowsecurity = true and forcerowsecurity =
+-- (b) Must list EVERY table with rowsecurity = true and forcerowsecurity =
 --     false. `forcerowsecurity = true` would lock the app out: do not set it.
 select c.relname                as tablename,
        c.relrowsecurity         as rowsecurity,
