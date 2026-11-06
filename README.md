@@ -113,6 +113,8 @@ npm install
 npm run db:migrate
 ```
 
+En Supabase, `scripts/supabase-hardening.sql` acompaña a las migraciones: su sección 1 va antes de `npm run db:migrate` y el archivo entero después (el encabezado del script explica el orden). **Se vuelve a correr entero después de cada migración que agregue una tabla** (la `0011` agrega `site_strip_photos`): sin eso, la tabla nueva queda sin RLS.
+
 Crear la configuración del cliente y seedear (SIN `--demo` — producción no lleva datos de prueba):
 
 ```bash
@@ -154,9 +156,9 @@ El seed imprime **una única vez** la contraseña temporal del admin inicial: gu
 - [ ] Registrar un ingreso y un egreso; el panel de Dinero muestra los 5 números.
 - [ ] Exportar el CSV y abrirlo en Excel (acentos y montos correctos).
 - [ ] Bajar un producto por debajo del mínimo → llega el email de alerta (o el evento queda `skipped` si no hay Resend).
-- [ ] `curl https://<instancia>/api/public/v1/stock` responde 200 con los productos activos, cada uno con `featured`. Un 500 acá es una migración pendiente (en `un-amargo`: la 0008, la 0009 o la 0010, que van en ese orden).
+- [ ] `curl https://<instancia>/api/public/v1/stock` responde 200 con los productos activos, cada uno con `featured`. Un 500 acá es una migración pendiente.
 - [ ] `curl https://<instancia>/api/public/v1/popup` responde 200 (`"popup": null` si no hay ninguno en vivo). Un 500 acá es la migración sin aplicar.
-- [ ] `curl https://<instancia>/api/public/v1/tira` responde 200 (`"photos": []` si no hay ninguna). Un 500 acá es la migración `0011` sin aplicar (en `un-amargo` va después de la 0008, la 0009 y la 0010, en ese orden).
+- [ ] `curl https://<instancia>/api/public/v1/tira` responde 200 (`"photos": []` si no hay ninguna). Un 500 acá es la migración `0011` sin aplicar.
 - [ ] Un usuario operador NO ve Importar/Configuración y no puede anular movimientos de dinero.
 - [ ] Borrar el producto de prueba no existe como opción: desactivarlo (correcto — el historial se conserva).
 - [ ] `npm run db:check` contra la base productiva pasa.
